@@ -1,0 +1,755 @@
+[
+    {
+        "id": "83587d6539ec1d85",
+        "type": "tab",
+        "label": "Flujo proyecto",
+        "disabled": false,
+        "info": "",
+        "env": []
+    },
+    {
+        "id": "706280cd3651a327",
+        "type": "mqtt in",
+        "z": "83587d6539ec1d85",
+        "name": "Maqiatto",
+        "topic": "sergio.vnsquez@uao.edu.co/tp01/datos",
+        "qos": "0",
+        "datatype": "auto-detect",
+        "broker": "19bfc80cde6ebac4",
+        "nl": false,
+        "rap": true,
+        "rh": 0,
+        "inputs": 0,
+        "x": 260,
+        "y": 640,
+        "wires": [
+            [
+                "bae4134f37b4cb4a"
+            ]
+        ]
+    },
+    {
+        "id": "bae4134f37b4cb4a",
+        "type": "json",
+        "z": "83587d6539ec1d85",
+        "name": "",
+        "property": "payload",
+        "action": "",
+        "pretty": false,
+        "x": 430,
+        "y": 640,
+        "wires": [
+            [
+                "63c17e47ce461cb5",
+                "cc8f842b56bb7bb2"
+            ]
+        ]
+    },
+    {
+        "id": "074778a64d18d989",
+        "type": "mqtt out",
+        "z": "83587d6539ec1d85",
+        "name": "Enviar Acción",
+        "topic": "",
+        "qos": "",
+        "retain": "false",
+        "respTopic": "",
+        "contentType": "",
+        "userProps": "",
+        "correl": "",
+        "expiry": "",
+        "broker": "19bfc80cde6ebac4",
+        "x": 1100,
+        "y": 640,
+        "wires": []
+    },
+    {
+        "id": "2d1fd37517f1ea73",
+        "type": "function",
+        "z": "83587d6539ec1d85",
+        "name": "Estado",
+        "func": "let datos = msg.payload;\n\nif (typeof datos === \"string\") {\n    try {\n        datos = JSON.parse(datos);\n    } catch (error) {\n        node.warn(\"El mensaje recibido no es un JSON válido\");\n        return null;\n    }\n}\n\nif (!datos || typeof datos !== \"object\") {\n    return null;\n}\n\nlet id = datos.id_conductor;\nlet fc = Number(datos.frecuencia_cardiaca);\nlet spo2 = Number(datos.spo2);\n\nif (!id) {\n    node.warn(\"Mensaje sin id_conductor\");\n    return null;\n}\n\nif (!Number.isFinite(fc) || !Number.isFinite(spo2)) {\n    return null;\n}\n\nconst UMBRALES_DEFECTO = {\n    fc_min_normal: 60,\n    fc_max_normal: 100,\n    spo2_min_normal: 90,\n    spo2_prealerta_min: 85,\n    spo2_prealerta_max: 89,\n    fc_caida_prealerta: 5,\n    fc_critica: 60,\n    spo2_critica: 80,\n    lecturas_criticas: 3\n};\nlet u = Object.assign({}, UMBRALES_DEFECTO, (flow.get(\"umbrales_conductor\") || {})[id]);\n\n\nlet spo2Valido = msg.spo2_valido !== false;\n\n\nif (!spo2Valido) {\n    node.status({\n        fill: \"blue\",\n        shape: \"ring\",\n        text: id + \" - Movimiento, SpO2 no medible\"\n    });\n    return null;\n}\n\nlet conductores = flow.get(\"conductores\") || {};\n\nif (!conductores[id]) {\n    conductores[id] = {\n        historialFC: [],\n        criticasConsecutivas: 0\n    };\n}\n\nlet conductor = conductores[id];\nlet historial = conductor.historialFC;\n\nlet promedio = fc;\n\nif (historial.length > 0) {\n    promedio =\n        historial.reduce((suma, valor) => suma + valor, 0)\n        / historial.length;\n}\n\nlet tendenciaBaja = false;\n\nif (historial.length >= 3) {\n    tendenciaBaja = (promedio - fc) > u.fc_caida_prealerta;\n}\n\nlet spo2Critica = spo2 <= u.spo2_critica;\nlet spo2PreAlerta = spo2 >= u.spo2_prealerta_min && spo2 <= u.spo2_prealerta_max;\nlet spo2Normal = spo2 >= u.spo2_min_normal;\n\nlet critica = fc <= u.fc_critica || spo2Critica;\n\nif (critica) {\n    conductor.criticasConsecutivas++;\n} else {\n    conductor.criticasConsecutivas = 0;\n}\n\nlet accion;\nlet estado;\n\nif (conductor.criticasConsecutivas >= u.lecturas_criticas) {\n    estado = \"ALERTA CRITICA\";\n    accion = \"Prender led rojo\";\n} else if (critica || tendenciaBaja || spo2PreAlerta) {\n    estado = \"PRE-ALERTA\";\n    accion = \"Prender led amarillo\";\n} else if (fc >= u.fc_min_normal && fc <= u.fc_max_normal && spo2Normal) {\n    estado = \"NORMAL\";\n    accion = \"Prender led verde\";\n} else {\n    estado = \"PRE-ALERTA\";\n    accion = \"Prender led amarillo\";\n}\n\nhistorial.push(fc);\n\nif (historial.length > 3) {\n    historial.shift();\n}\n\nconductor.historialFC = historial;\nconductores[id] = conductor;\n\nflow.set(\"conductores\", conductores);\n\nmsg.topic = \"sergio.vnsquez@uao.edu.co/tp01/command/\" + id;\nmsg.payload = accion;\n\nmsg.id_conductor = id;\nmsg.estado = estado;\nmsg.frecuencia_cardiaca = fc;\nmsg.spo2 = spo2;\nmsg.spo2_valido = spo2Valido;\nmsg.promedio_fc = promedio;\nmsg.criticas_consecutivas = conductor.criticasConsecutivas;\nmsg.umbrales = u;\n\nnode.status({\n    fill: estado === \"NORMAL\" ? \"green\" :\n          estado === \"PRE-ALERTA\" ? \"yellow\" : \"red\",\n    shape: \"dot\",\n    text: id + \" - \" + estado\n});\n\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 880,
+        "y": 640,
+        "wires": [
+            [
+                "074778a64d18d989",
+                "78b614b957ef59a1"
+            ]
+        ]
+    },
+    {
+        "id": "5e1a7c2b9d3f4a01",
+        "type": "inject",
+        "z": "83587d6539ec1d85",
+        "name": "Recargar umbrales (15 s)",
+        "props": [
+            {
+                "p": "payload"
+            }
+        ],
+        "repeat": "15",
+        "crontab": "",
+        "once": true,
+        "onceDelay": "1",
+        "topic": "",
+        "payload": "{}",
+        "payloadType": "json",
+        "x": 230,
+        "y": 900,
+        "wires": [
+            [
+                "5e1a7c2b9d3f4a02"
+            ]
+        ]
+    },
+    {
+        "id": "5e1a7c2b9d3f4a02",
+        "type": "mongodb in",
+        "z": "83587d6539ec1d85",
+        "mongodb": "d94e8078009d4ac8",
+        "name": "configuracion_conductor",
+        "collection": "configuracion_conductor",
+        "operation": "find",
+        "x": 470,
+        "y": 900,
+        "wires": [
+            [
+                "5e1a7c2b9d3f4a03"
+            ]
+        ]
+    },
+    {
+        "id": "5e1a7c2b9d3f4a03",
+        "type": "function",
+        "z": "83587d6539ec1d85",
+        "name": "Cargar umbrales",
+        "func": "const CAMPOS = [\n    \"fc_min_normal\", \"fc_max_normal\", \"spo2_min_normal\",\n    \"spo2_prealerta_min\", \"spo2_prealerta_max\",\n    \"fc_caida_prealerta\", \"fc_critica\", \"spo2_critica\", \"lecturas_criticas\"\n];\n\nconst docs = Array.isArray(msg.payload) ? msg.payload : [];\nconst umbrales = {};\nlet invalidos = 0;\n\nfor (const doc of docs) {\n    if (!doc || !doc.id_conductor) continue;\n    const u = {};\n    let ok = true;\n    for (const campo of CAMPOS) {\n        const v = Number(doc[campo]);\n        if (!Number.isFinite(v)) { ok = false; break; }\n        u[campo] = v;\n    }\n    if (ok) {\n        ok = u.fc_min_normal < u.fc_max_normal\n            && u.spo2_critica < u.spo2_prealerta_min\n            && u.spo2_prealerta_min <= u.spo2_prealerta_max\n            && u.spo2_prealerta_max < u.spo2_min_normal\n            && u.lecturas_criticas >= 1;\n    }\n    if (!ok) {\n        invalidos++;\n        node.warn(\"Umbrales inválidos para \" + doc.id_conductor + \"; se usan los valores por defecto\");\n        continue;\n    }\n    umbrales[String(doc.id_conductor).trim()] = u;\n}\n\nflow.set(\"umbrales_conductor\", umbrales);\n\nnode.status({\n    fill: invalidos ? \"yellow\" : \"green\",\n    shape: \"dot\",\n    text: Object.keys(umbrales).length + \" conductores\" + (invalidos ? \", \" + invalidos + \" inválidos\" : \"\") +\n        \" · \" + new Date().toLocaleTimeString(\"es-CO\", { timeZone: \"America/Bogota\", hour12: false })\n});\n\nreturn null;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 700,
+        "y": 900,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "63c17e47ce461cb5",
+        "type": "function",
+        "z": "83587d6539ec1d85",
+        "name": "Validación de movimiento",
+        "func": "let datos = msg.payload;\n\nif (typeof datos === \"string\") {\n    try {\n        datos = JSON.parse(datos);\n    } catch (error) {\n        node.warn(\"El mensaje recibido no es un JSON válido\");\n        return null;\n    }\n}\n\nif (!datos || typeof datos !== \"object\") {\n    return null;\n}\n\nlet id = datos.id_conductor;\n\nif (!id) {\n    node.warn(\"Mensaje sin id_conductor\");\n    return null;\n}\n\nlet tiempoMsg = Date.parse(datos.marca_tiempo);\nif (!Number.isFinite(tiempoMsg)) {\n    tiempoMsg = Date.now();\n}\n\nconst VENTANA_NORMAL_MS = 10000;\nconst VENTANA_FATIGA_MS = 5000;\nconst RETENCION_MS = 20000;\nconst INTERVALO_ALERTA_MS = 5000;  \n\nlet estados = flow.get(\"validacion_movimiento\") || {};\n\nif (!estados[id]) {\n    estados[id] = {\n        movimientos: [],\n        ventanaMs: VENTANA_NORMAL_MS,\n        fcAnterior: null,\n        ultimaAlertaMs: 0\n    };\n}\n\nlet e = estados[id];\n\n\nif (Number(datos.movimiento) === 1) {\n    e.movimientos.push(tiempoMsg);\n    e.movimientos = e.movimientos.filter(t => (tiempoMsg - t) <= RETENCION_MS);\n\n    let alerta = null;\n\n    if ((tiempoMsg - (e.ultimaAlertaMs || 0)) >= INTERVALO_ALERTA_MS) {\n        e.ultimaAlertaMs = tiempoMsg;\n\n        alerta = {\n            topic: \"sergio.vnsquez@uao.edu.co/tp01/alerta/\" + id,\n            payload: \"ALERTA: el conductor se está moviendo, no se puede tomar el dato de SpO2\",\n            id_conductor: id,\n            hubo_movimiento: true,\n            spo2_valido: false\n        };\n\n        node.status({\n            fill: \"blue\",\n            shape: \"ring\",\n            text: id + \" - Movimiento, SpO2 no medible\"\n        });\n    }\n\n    estados[id] = e;\n    flow.set(\"validacion_movimiento\", estados);\n\n    return [null, alerta];   \n}\n\n\nlet fc = Number(datos.frecuencia_cardiaca);\nlet spo2 = Number(datos.spo2);\n\nif (!Number.isFinite(fc) || !Number.isFinite(spo2)) {\n    return null;\n}\n\nlet ventana = e.ventanaMs;\n\nlet huboMovimiento = e.movimientos.some(\n    t => t >= (tiempoMsg - ventana) && t <= tiempoMsg\n);\n\nif (e.fcAnterior !== null && (e.fcAnterior - fc) >= 5) {\n    e.ventanaMs = VENTANA_FATIGA_MS;\n} else {\n    e.ventanaMs = VENTANA_NORMAL_MS;\n}\ne.fcAnterior = fc;\n\ne.movimientos = e.movimientos.filter(t => (tiempoMsg - t) <= RETENCION_MS);\n\nestados[id] = e;\nflow.set(\"validacion_movimiento\", estados);\n\nmsg.payload = datos;\nmsg.spo2_valido = !huboMovimiento;\nmsg.hubo_movimiento = huboMovimiento;\nmsg.ventana_ms = ventana;\n\nnode.status({\n    fill: huboMovimiento ? \"red\" : \"green\",\n    shape: \"dot\",\n    text: id + (huboMovimiento ? \" - SpO2 inválida\" : \" - SpO2 válida\")\n});\n\nreturn [msg, null];   ",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 650,
+        "y": 640,
+        "wires": [
+            [
+                "2d1fd37517f1ea73"
+            ]
+        ]
+    },
+    {
+        "id": "cc8f842b56bb7bb2",
+        "type": "function",
+        "z": "83587d6539ec1d85",
+        "name": "Preparar almacenamiento",
+        "func": "let datos = msg.payload;\n\nif (typeof datos === \"string\") {\n    try {\n        datos = JSON.parse(datos);\n    } catch (error) {\n        return [null, null];\n    }\n}\n\nif (!datos || typeof datos !== \"object\" || !datos.id_conductor) {\n    return [null, null];\n}\n\nlet ahora = new Date();\n\nif (Number(datos.movimiento) === 1) {\n    return [\n        null,\n        {\n            payload: {\n                id_conductor: datos.id_conductor,\n                marca_tiempo: datos.marca_tiempo || ahora.toISOString(),\n                movimiento: 1,\n                timestamp_servidor: ahora\n            }\n        }\n    ];\n}\n\nlet fc = Number(datos.frecuencia_cardiaca);\nlet spo2 = Number(datos.spo2);\n\nif (!Number.isFinite(fc) || !Number.isFinite(spo2)) {\n    return [null, null];\n}\n\nreturn [\n    {\n        payload: {\n            id_conductor: datos.id_conductor,\n            marca_tiempo: datos.marca_tiempo,\n            frecuencia_cardiaca: fc,\n            spo2: spo2,\n            timestamp_servidor: ahora\n        }\n    },\n    null\n];",
+        "outputs": 2,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 660,
+        "y": 500,
+        "wires": [
+            [
+                "869f674d271dfc46"
+            ],
+            [
+                "bfc930a709ffe5bf"
+            ]
+        ]
+    },
+    {
+        "id": "869f674d271dfc46",
+        "type": "mongodb out",
+        "z": "83587d6539ec1d85",
+        "mongodb": "d94e8078009d4ac8",
+        "name": "MongoDB - mediciones",
+        "collection": "mediciones",
+        "payonly": true,
+        "upsert": false,
+        "multi": false,
+        "operation": "insert",
+        "x": 940,
+        "y": 470,
+        "wires": []
+    },
+    {
+        "id": "bfc930a709ffe5bf",
+        "type": "mongodb out",
+        "z": "83587d6539ec1d85",
+        "mongodb": "d94e8078009d4ac8",
+        "name": "MongoDB - movimiento",
+        "collection": "eventos_movimiento",
+        "payonly": true,
+        "upsert": false,
+        "multi": false,
+        "operation": "insert",
+        "x": 950,
+        "y": 530,
+        "wires": []
+    },
+    {
+        "id": "78b614b957ef59a1",
+        "type": "function",
+        "z": "83587d6539ec1d85",
+        "name": "Preparar estado y alertas",
+        "func": "let id = msg.id_conductor;\nlet estado = msg.estado;\nlet accion = msg.payload;\n\nif (!id || !estado) {\n    return [null, null, null];\n}\n\nlet ahora = new Date();\n\nlet estadoMsg = {\n    payload: {\n        id_conductor: id,\n        estado: estado,\n        accion: accion,\n        promedio_fc: Number(msg.promedio_fc),\n        criticas_consecutivas: Number(msg.criticas_consecutivas),\n        timestamp: ahora\n    }\n};\n\nlet alertasActivas = flow.get(\"alertas_activas_mongo\") || {};\nlet activaAnterior = alertasActivas[id] || null;\n\nlet alertaInsert = null;\nlet alertaCerrar = null;\n\nif (activaAnterior && activaAnterior.estado !== estado) {\n    alertaCerrar = {\n        query: {\n            _id: activaAnterior._id\n        },\n        payload: {\n            $set: {\n                timestamp_fin: ahora,\n                activa: false\n            }\n        }\n    };\n\n    delete alertasActivas[id];\n    activaAnterior = null;\n}\n\nif (estado !== \"NORMAL\" && !activaAnterior) {\n    let alertaId =\n        id + \"-\" +\n        Date.now().toString() + \"-\" +\n        Math.random().toString(16).slice(2, 8);\n\n    let tipoAlerta;\n    let nivel;\n    let descripcion;\n\n    if (estado === \"ALERTA CRITICA\") {\n        tipoAlerta = \"ALERTA_CRITICA\";\n        nivel = \"CRITICO\";\n        descripcion =\n            \"Alerta critica detectada: FC=\" +\n            Number(msg.frecuencia_cardiaca).toFixed(1) +\n            \" bpm, SpO2=\" +\n            Number(msg.spo2).toFixed(1) +\n            \"%, lecturas criticas consecutivas=\" +\n            Number(msg.criticas_consecutivas);\n    } else {\n        tipoAlerta = \"PRE_ALERTA\";\n        nivel = \"MEDIO\";\n        descripcion =\n            \"Pre-alerta detectada: FC=\" +\n            Number(msg.frecuencia_cardiaca).toFixed(1) +\n            \" bpm, SpO2=\" +\n            Number(msg.spo2).toFixed(1) +\n            \"%, promedio FC=\" +\n            Number(msg.promedio_fc).toFixed(1) +\n            \" bpm\";\n    }\n\n    alertaInsert = {\n        payload: {\n            _id: alertaId,\n            id_conductor: id,\n            tipo_alerta: tipoAlerta,\n            descripcion: descripcion,\n            nivel: nivel,\n            timestamp_inicio: ahora,\n            timestamp_fin: null,\n            activa: true\n        }\n    };\n\n    alertasActivas[id] = {\n        _id: alertaId,\n        estado: estado\n    };\n}\n\nflow.set(\"alertas_activas_mongo\", alertasActivas);\n\nreturn [\n    estadoMsg,\n    alertaInsert,\n    alertaCerrar\n];",
+        "outputs": 3,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 1110,
+        "y": 780,
+        "wires": [
+            [
+                "c3d8fc14da312763"
+            ],
+            [
+                "dfba6bbf71898a02"
+            ],
+            [
+                "5671219439e19a8d"
+            ]
+        ]
+    },
+    {
+        "id": "c3d8fc14da312763",
+        "type": "mongodb out",
+        "z": "83587d6539ec1d85",
+        "mongodb": "d94e8078009d4ac8",
+        "name": "MongoDB - estados",
+        "collection": "estados",
+        "payonly": true,
+        "upsert": false,
+        "multi": false,
+        "operation": "insert",
+        "x": 1380,
+        "y": 730,
+        "wires": []
+    },
+    {
+        "id": "dfba6bbf71898a02",
+        "type": "mongodb out",
+        "z": "83587d6539ec1d85",
+        "mongodb": "d94e8078009d4ac8",
+        "name": "MongoDB - nueva alerta",
+        "collection": "alertas",
+        "payonly": true,
+        "upsert": false,
+        "multi": false,
+        "operation": "insert",
+        "x": 1400,
+        "y": 790,
+        "wires": []
+    },
+    {
+        "id": "5671219439e19a8d",
+        "type": "mongodb out",
+        "z": "83587d6539ec1d85",
+        "mongodb": "d94e8078009d4ac8",
+        "name": "MongoDB - cerrar alerta",
+        "collection": "alertas",
+        "payonly": true,
+        "upsert": false,
+        "multi": false,
+        "operation": "update",
+        "x": 1400,
+        "y": 850,
+        "wires": []
+    },
+    {
+        "id": "a8a8f15cce6deae0",
+        "type": "inject",
+        "z": "83587d6539ec1d85",
+        "name": "Ejecutar limpieza",
+        "props": [
+            {
+                "p": "payload"
+            }
+        ],
+        "repeat": "",
+        "crontab": "",
+        "once": false,
+        "onceDelay": 0.1,
+        "topic": "",
+        "payload": "{}",
+        "payloadType": "json",
+        "x": 200,
+        "y": 1100,
+        "wires": [
+            [
+                "56a77ec99c36e870"
+            ]
+        ]
+    },
+    {
+        "id": "56a77ec99c36e870",
+        "type": "mongodb in",
+        "z": "83587d6539ec1d85",
+        "mongodb": "d94e8078009d4ac8",
+        "name": "eventos_movimiento",
+        "collection": "eventos_movimiento",
+        "operation": "find",
+        "x": 420,
+        "y": 1100,
+        "wires": [
+            [
+                "188dcaa20154d5ca"
+            ]
+        ]
+    },
+    {
+        "id": "188dcaa20154d5ca",
+        "type": "function",
+        "z": "83587d6539ec1d85",
+        "name": "Guardar eventos de movimiento",
+        "func": "flow.set('tmp_eventos_mov', msg.payload);\nmsg.payload = {};\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 710,
+        "y": 1100,
+        "wires": [
+            [
+                "47cd2819e8503832"
+            ]
+        ]
+    },
+    {
+        "id": "47cd2819e8503832",
+        "type": "mongodb in",
+        "z": "83587d6539ec1d85",
+        "mongodb": "d94e8078009d4ac8",
+        "name": "mediciones (crudo)",
+        "collection": "mediciones",
+        "operation": "find",
+        "x": 990,
+        "y": 1100,
+        "wires": [
+            [
+                "2a8f11704a0feefa"
+            ]
+        ]
+    },
+    {
+        "id": "2a8f11704a0feefa",
+        "type": "function",
+        "z": "83587d6539ec1d85",
+        "name": "1. Validar campos, rangos y fecha",
+        "func": "const datos = Array.isArray(msg.payload) ? msg.payload : [];\nconst num = x => x !== null && x !== undefined && String(x).trim() !== '' && isFinite(Number(x));\nconst limpios = [];\nlet descartados = 0;\n\nfor (const d of datos) {\n  // incompletos\n  if (!d || !d.id_conductor || String(d.id_conductor).trim() === '') { descartados++; continue; }\n  if (!num(d.frecuencia_cardiaca) || !num(d.spo2)) { descartados++; continue; }\n\n  // formato\n  const fc = Number(d.frecuencia_cardiaca);\n  const spo2 = Number(d.spo2);\n\n  // rangos fisicos\n  if (fc < 30 || fc > 220 || spo2 < 60 || spo2 > 100) { descartados++; continue; }\n\n  // fecha\n  let t = new Date(d.marca_tiempo).getTime();\n  const ts = new Date(d.timestamp_servidor).getTime();\n  if (isNaN(t) || (!isNaN(ts) && Math.abs(t - ts) > 300000)) t = ts;\n  if (isNaN(t)) { descartados++; continue; }\n\n  limpios.push({\n    _id: d._id,\n    id_conductor: String(d.id_conductor).trim().toUpperCase(),\n    marca_tiempo: new Date(t),\n    frecuencia_cardiaca: fc,\n    spo2: spo2\n  });\n}\n\nmsg.payload = limpios;\nmsg.descartados = descartados;\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 1240,
+        "y": 1100,
+        "wires": [
+            [
+                "8258957c7e6105e6"
+            ]
+        ]
+    },
+    {
+        "id": "8258957c7e6105e6",
+        "type": "function",
+        "z": "83587d6539ec1d85",
+        "name": "2. Duplicados y movimiento",
+        "func": "// eventos de movimiento por conductor\nconst eventos = {};\nfor (const e of flow.get('tmp_eventos_mov') || []) {\n  if (!e || !e.id_conductor) continue;\n  const t = new Date(e.marca_tiempo || e.timestamp_servidor).getTime();\n  if (isNaN(t)) continue;\n  const id = String(e.id_conductor).trim().toUpperCase();\n  (eventos[id] = eventos[id] || []).push(t);\n}\n\n// ordenar por conductor y hora\nmsg.payload.sort((a, b) => a.id_conductor < b.id_conductor ? -1 : a.id_conductor > b.id_conductor ? 1 : a.marca_tiempo - b.marca_tiempo);\n\nconst vistos = new Set();\nconst salida = [];\nlet duplicados = 0;\nlet idAnt = null, fcAnt = null, ventana = 10000;\n\nfor (const d of msg.payload) {\n  // duplicado \n  const t = d.marca_tiempo.getTime();\n  const clave = d.id_conductor + '|' + t;\n  if (vistos.has(clave)) { duplicados++; continue; }\n  vistos.add(clave);\n\n  // hubo movimiento\n  if (d.id_conductor !== idAnt) { idAnt = d.id_conductor; fcAnt = null; ventana = 10000; }\n  const tiempos = eventos[d.id_conductor] || [];\n  d.hubo_movimiento = tiempos.some(x => x >= t - ventana && x <= t);\n  ventana = (fcAnt !== null && fcAnt - d.frecuencia_cardiaca >= 5) ? 5000 : 10000;\n  fcAnt = d.frecuencia_cardiaca;\n\n  // upsert por _id \n  const id = d._id !== undefined ? d._id : clave;\n  delete d._id;\n  salida.push({ query: { _id: id }, payload: { $set: d } });\n}\n\nflow.set('tmp_eventos_mov', undefined);\nnode.status({ fill: 'green', shape: 'dot', text: salida.length + ' limpios, ' + (msg.descartados + duplicados) + ' descartados' });\nreturn [salida];",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 1550,
+        "y": 1100,
+        "wires": [
+            [
+                "043238912f9f7837"
+            ]
+        ]
+    },
+    {
+        "id": "043238912f9f7837",
+        "type": "mongodb out",
+        "z": "83587d6539ec1d85",
+        "mongodb": "d94e8078009d4ac8",
+        "name": "MongoDB - datos_limpios",
+        "collection": "datos_limpios",
+        "payonly": true,
+        "upsert": true,
+        "multi": false,
+        "operation": "update",
+        "x": 1820,
+        "y": 1100,
+        "wires": []
+    },
+    {
+        "id": "673448170219c51b",
+        "type": "inject",
+        "z": "83587d6539ec1d85",
+        "name": "Ejecutar analisis",
+        "props": [
+            {
+                "p": "payload"
+            }
+        ],
+        "repeat": "",
+        "crontab": "",
+        "once": false,
+        "onceDelay": 0.1,
+        "topic": "",
+        "payload": "{}",
+        "payloadType": "json",
+        "x": 200,
+        "y": 1260,
+        "wires": [
+            [
+                "537bd233f1344613"
+            ]
+        ]
+    },
+    {
+        "id": "537bd233f1344613",
+        "type": "function",
+        "z": "83587d6539ec1d85",
+        "name": "Ventana (7 dias)",
+        "func": "\nconst DIAS = 7;\nconst OFFSET = -5 * 3600 * 1000;\nconst DIA = 86400000;\n\nconst ahora = Date.now();\nconst medianoche = Math.floor((ahora + OFFSET) / DIA) * DIA - OFFSET;   \nconst desde = medianoche - (DIAS - 1) * DIA;\n\nmsg.cfg = { ahora: ahora, desde: desde, dias: DIAS, offset: OFFSET };\nmsg.payload = { marca_tiempo: { $gte: new Date(desde) } };              \nreturn msg;\n",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 400,
+        "y": 1260,
+        "wires": [
+            [
+                "24c5968c7313351d"
+            ]
+        ]
+    },
+    {
+        "id": "24c5968c7313351d",
+        "type": "mongodb in",
+        "z": "83587d6539ec1d85",
+        "mongodb": "d94e8078009d4ac8",
+        "name": "datos_limpios",
+        "collection": "datos_limpios",
+        "operation": "find",
+        "x": 590,
+        "y": 1260,
+        "wires": [
+            [
+                "33bfce4b67ba7fe6"
+            ]
+        ]
+    },
+    {
+        "id": "33bfce4b67ba7fe6",
+        "type": "function",
+        "z": "83587d6539ec1d85",
+        "name": "Guardar lecturas",
+        "func": "\nmsg.limpios = msg.payload;\nmsg.payload = { timestamp: { $gte: new Date(msg.cfg.desde) } };\nreturn msg;\n",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 830,
+        "y": 1260,
+        "wires": [
+            [
+                "14d18f28ecdb4e45"
+            ]
+        ]
+    },
+    {
+        "id": "14d18f28ecdb4e45",
+        "type": "mongodb in",
+        "z": "83587d6539ec1d85",
+        "mongodb": "d94e8078009d4ac8",
+        "name": "estados",
+        "collection": "estados",
+        "operation": "find",
+        "x": 1000,
+        "y": 1260,
+        "wires": [
+            [
+                "f77bc3f70ba3e652"
+            ]
+        ]
+    },
+    {
+        "id": "f77bc3f70ba3e652",
+        "type": "function",
+        "z": "83587d6539ec1d85",
+        "name": "Guardar estados",
+        "func": "\nmsg.estadosRaw = msg.payload;\nmsg.payload = { timestamp_inicio: { $gte: new Date(msg.cfg.desde) } };\nreturn msg;\n",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 1210,
+        "y": 1260,
+        "wires": [
+            [
+                "8ed034185533b253"
+            ]
+        ]
+    },
+    {
+        "id": "8ed034185533b253",
+        "type": "mongodb in",
+        "z": "83587d6539ec1d85",
+        "mongodb": "d94e8078009d4ac8",
+        "name": "alertas",
+        "collection": "alertas",
+        "operation": "find",
+        "x": 1410,
+        "y": 1260,
+        "wires": [
+            [
+                "10025ac86ed37bfc"
+            ]
+        ]
+    },
+    {
+        "id": "10025ac86ed37bfc",
+        "type": "function",
+        "z": "83587d6539ec1d85",
+        "name": "1. Preparar datos",
+        "func": "\nconst OFFSET = msg.cfg.offset;\n\nfunction limpiarId(valor) {\n    if (!valor) return \"\";\n    return String(valor).trim().toUpperCase();\n}\n\nfunction fechaLocal(milisegundos) {\n    const d = new Date(milisegundos + OFFSET);\n    return {\n        dia: d.toISOString().slice(0, 10),\n        hora: d.getUTCHours(),\n        dsem: (d.getUTCDay() + 6) % 7    \n    };\n}\n\n// --- Lecturas (datos_limpios)\nconst lecturas = [];\nconst listaLimpios = Array.isArray(msg.limpios) ? msg.limpios : [];\nfor (let i = 0; i < listaLimpios.length; i++) {\n    const d = listaLimpios[i];\n    const id = limpiarId(d.id_conductor);\n    const t = new Date(d.marca_tiempo).getTime();\n    const fc = Number(d.frecuencia_cardiaca);\n    const spo2 = Number(d.spo2);\n    if (id === \"\" || isNaN(t) || !isFinite(fc) || !isFinite(spo2)) continue;\n    lecturas.push({ id: id, t: t, fc: fc, spo2: spo2, movimiento: d.hubo_movimiento === true });\n}\n\n// --- Estados (normal / prealerta / critica)\nconst CLAVES = { \"NORMAL\": \"normal\", \"PRE-ALERTA\": \"prealerta\", \"ALERTA CRITICA\": \"critica\" };\nconst estados = [];\nconst listaEstados = Array.isArray(msg.estadosRaw) ? msg.estadosRaw : [];\nfor (let i = 0; i < listaEstados.length; i++) {\n    const e = listaEstados[i];\n    const t = new Date(e.timestamp).getTime();\n    const clave = CLAVES[e.estado];\n    if (!clave || isNaN(t)) continue;\n    const f = fechaLocal(t);\n    estados.push({ clave: clave, dia: f.dia, hora: f.hora });\n}\n\n// --- Alertas\nconst alertas = [];\nconst listaAlertas = Array.isArray(msg.payload) ? msg.payload : [];\nfor (let i = 0; i < listaAlertas.length; i++) {\n    const a = listaAlertas[i];\n    const t = new Date(a.timestamp_inicio).getTime();\n    if (isNaN(t)) continue;\n    const f = fechaLocal(t);\n    alertas.push({\n        id: limpiarId(a.id_conductor),\n        critica: a.tipo_alerta === \"ALERTA_CRITICA\",\n        dia: f.dia,\n        hora: f.hora,\n        dsem: f.dsem\n    });\n}\n\nmsg.lecturas = lecturas;\nmsg.estados = estados;\nmsg.alertas = alertas;\nmsg.filas = { diaHora: [], conductor: [], semana: [] };  \nmsg.payload = null;\nreturn msg;\n",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 230,
+        "y": 1440,
+        "wires": [
+            [
+                "864e9321b9f580b3"
+            ]
+        ]
+    },
+    {
+        "id": "864e9321b9f580b3",
+        "type": "function",
+        "z": "83587d6539ec1d85",
+        "name": "2. dia y hora",
+        "func": "\nconst OFFSET = msg.cfg.offset;\nconst DIA = 86400000;\nconst NOMBRES = [\"Lun\", \"Mar\", \"Mie\", \"Jue\", \"Vie\", \"Sab\", \"Dom\"];\n\nfor (let i = 0; i < msg.cfg.dias; i++) {\n    const fecha = new Date(msg.cfg.desde + i * DIA + OFFSET);\n    const dia = fecha.toISOString().slice(0, 10);\n    const dsem = (fecha.getUTCDay() + 6) % 7;      \n\n    for (let hora = 0; hora < 24; hora++) {\n\n        // contar estados de ese dia y hora\n        let normal = 0, prealerta = 0, critica = 0;\n        for (let j = 0; j < msg.estados.length; j++) {\n            const e = msg.estados[j];\n            if (e.dia !== dia || e.hora !== hora) continue;\n            if (e.clave === \"normal\") normal++;\n            if (e.clave === \"prealerta\") prealerta++;\n            if (e.clave === \"critica\") critica++;\n        }\n\n        // contar alertas de ese dia y hora\n        let totalAlertas = 0, alertasCriticas = 0;\n        for (let j = 0; j < msg.alertas.length; j++) {\n            const a = msg.alertas[j];\n            if (a.dia !== dia || a.hora !== hora) continue;\n            totalAlertas++;\n            if (a.critica) alertasCriticas++;\n        }\n\n        msg.filas.diaHora.push({\n            query: { _id: dia + \"-\" + hora },\n            payload: { $set: {\n                dia: dia,\n                dsem: dsem,\n                dia_semana: NOMBRES[dsem],\n                hora: hora,\n                normal: normal,\n                prealerta: prealerta,\n                critica: critica,\n                alertas: totalAlertas,\n                alertas_criticas: alertasCriticas,\n                actualizado: new Date(msg.cfg.ahora)\n            } }\n        });\n    }\n}\nreturn msg;\n",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 480,
+        "y": 1440,
+        "wires": [
+            [
+                "10900bf0fa6441f9"
+            ]
+        ]
+    },
+    {
+        "id": "10900bf0fa6441f9",
+        "type": "function",
+        "z": "83587d6539ec1d85",
+        "name": "3. conductor",
+        "func": "\nconst GAP_S = 1800;       \nconst PAUSA_S = 120;      \nconst LIMITE_H = 6;       \n\nfunction redondear(x) {\n    return Math.round(x * 100) / 100;\n}\n\nfunction promedio(lista) {\n    if (lista.length === 0) return null;\n    let suma = 0;\n    for (let i = 0; i < lista.length; i++) suma += lista[i];\n    return redondear(suma / lista.length);\n}\n\n\nconst porConductor = {};\nfor (let i = 0; i < msg.lecturas.length; i++) {\n    const l = msg.lecturas[i];\n    if (!porConductor[l.id]) porConductor[l.id] = [];\n    porConductor[l.id].push(l);\n}\n\n\nconst ids = Object.keys(porConductor).sort();\nmsg.horasTotales = 0;\n\nfor (let k = 0; k < ids.length; k++) {\n    const id = ids[k];\n    const lista = porConductor[id];\n    lista.sort(function (a, b) { return a.t - b.t; });\n\n\n    let inicioSesion = lista[0].t;\n    let horas = 0;\n    for (let i = 1; i < lista.length; i++) {\n        const gap = (lista[i].t - lista[i - 1].t) / 1000;\n        if (gap > GAP_S) inicioSesion = lista[i].t;      \n        if (gap <= PAUSA_S) horas += gap / 3600;\n    }\n\n\n    const ultimo = lista[lista.length - 1].t;\n    const activa = (msg.cfg.ahora - ultimo) <= GAP_S * 1000;\n    let tiempoAlVolante = 0;\n    if (activa) tiempoAlVolante = (ultimo - inicioSesion) / 3600000;\n\n    const valoresFc = [];\n    const valoresSpo2 = [];\n    for (let i = 0; i < lista.length; i++) {\n        valoresFc.push(lista[i].fc);\n        if (!lista[i].movimiento) valoresSpo2.push(lista[i].spo2);\n    }\n\n    let totalAlertas = 0, alertasCriticas = 0;\n    for (let i = 0; i < msg.alertas.length; i++) {\n        if (msg.alertas[i].id !== id) continue;\n        totalAlertas++;\n        if (msg.alertas[i].critica) alertasCriticas++;\n    }\n\n    let vehiculo = id;\n    if (id.indexOf(\"-\") > 0) vehiculo = id.split(\"-\")[0];\n\n    const horasRedondeadas = redondear(horas);\n    msg.horasTotales += horasRedondeadas;\n\n    msg.filas.conductor.push({\n        query: { _id: id },\n        payload: { $set: {\n            conductor: id,\n            vehiculo: vehiculo,\n            alertas: totalAlertas,\n            alertas_criticas: alertasCriticas,\n            fc_prom: promedio(valoresFc),\n            spo2_prom: promedio(valoresSpo2),\n            horas_conduccion: horasRedondeadas,\n            sesion_activa: activa,\n            tiempo_al_volante_h: redondear(tiempoAlVolante),\n            excede_limite: tiempoAlVolante > LIMITE_H,\n            actualizado: new Date(msg.cfg.ahora)\n        } }\n    });\n}\n\nmsg.totalConductores = ids.length;\nreturn msg;\n",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 700,
+        "y": 1440,
+        "wires": [
+            [
+                "0178dd343c2a6029"
+            ]
+        ]
+    },
+    {
+        "id": "0178dd343c2a6029",
+        "type": "function",
+        "z": "83587d6539ec1d85",
+        "name": "4. semana",
+        "func": "// Una sola fila con los totales de la ventana.\nlet criticas = 0;\nfor (let i = 0; i < msg.alertas.length; i++) {\n    if (msg.alertas[i].critica) criticas++;\n}\n\nmsg.filas.semana.push({\n    query: { _id: \"semana\" },\n    payload: { $set: {\n            alertas_total: msg.alertas.length,\n        alertas_criticas: criticas,\n        horas_conduccion: Math.round(msg.horasTotales * 100) / 100,\n        conductores: msg.totalConductores,\n        desde: new Date(msg.cfg.desde),\n        hasta: new Date(msg.cfg.ahora),\n        actualizado: new Date(msg.cfg.ahora)\n    } }\n});\nreturn msg;\n",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 960,
+        "y": 1440,
+        "wires": [
+            [
+                "dd9837ea38764f17"
+            ]
+        ]
+    },
+    {
+        "id": "dd9837ea38764f17",
+        "type": "function",
+        "z": "83587d6539ec1d85",
+        "name": "5. Enviar ",
+        "func": "node.status({ fill: \"green\", shape: \"dot\", text: msg.totalConductores + \" conductores, \" + msg.alertas.length + \" alertas guardados\" });\n\nfunction armar(lista) {\n    const mensajes = [];\n    for (let i = 0; i < lista.length; i++) {\n        mensajes.push({ query: lista[i].query, payload: lista[i].payload });\n    }\n    return mensajes;\n}\n\nreturn [armar(msg.filas.diaHora), armar(msg.filas.conductor), armar(msg.filas.semana)];\n",
+        "outputs": 3,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 1170,
+        "y": 1440,
+        "wires": [
+            [
+                "ca6d1e7293fc11aa"
+            ],
+            [
+                "1fca297d1b10297b"
+            ],
+            [
+                "837780750fd6c8f4"
+            ]
+        ]
+    },
+    {
+        "id": "ca6d1e7293fc11aa",
+        "type": "mongodb out",
+        "z": "83587d6539ec1d85",
+        "mongodb": "d94e8078009d4ac8",
+        "name": "MongoDB - analisis_dia_hora",
+        "collection": "analisis_dia_hora",
+        "payonly": true,
+        "upsert": true,
+        "multi": false,
+        "operation": "update",
+        "x": 1500,
+        "y": 1380,
+        "wires": []
+    },
+    {
+        "id": "1fca297d1b10297b",
+        "type": "mongodb out",
+        "z": "83587d6539ec1d85",
+        "mongodb": "d94e8078009d4ac8",
+        "name": "MongoDB - analisis_conductor",
+        "collection": "analisis_conductor",
+        "payonly": true,
+        "upsert": true,
+        "multi": false,
+        "operation": "update",
+        "x": 1500,
+        "y": 1440,
+        "wires": []
+    },
+    {
+        "id": "837780750fd6c8f4",
+        "type": "mongodb out",
+        "z": "83587d6539ec1d85",
+        "mongodb": "d94e8078009d4ac8",
+        "name": "MongoDB - analisis_semana",
+        "collection": "analisis_semana",
+        "payonly": true,
+        "upsert": true,
+        "multi": false,
+        "operation": "update",
+        "x": 1500,
+        "y": 1500,
+        "wires": []
+    },
+    {
+        "id": "19bfc80cde6ebac4",
+        "type": "mqtt-broker",
+        "name": "Maqiatto",
+        "broker": "maqiatto.com",
+        "port": 1883,
+        "clientid": "",
+        "autoConnect": true,
+        "usetls": false,
+        "protocolVersion": 4,
+        "keepalive": 60,
+        "cleansession": true,
+        "autoUnsubscribe": true,
+        "birthTopic": "",
+        "birthQos": "0",
+        "birthRetain": "false",
+        "birthPayload": "",
+        "birthMsg": {},
+        "closeTopic": "",
+        "closeQos": "0",
+        "closeRetain": "false",
+        "closePayload": "",
+        "closeMsg": {},
+        "willTopic": "",
+        "willQos": "0",
+        "willRetain": "false",
+        "willPayload": "",
+        "willMsg": {},
+        "userProps": "",
+        "sessionExpiry": ""
+    },
+    {
+        "id": "d94e8078009d4ac8",
+        "type": "mongodb",
+        "hostname": "driversafe.f9bnlc1.mongodb.net",
+        "topology": "dnscluster",
+        "connectOptions": "useUnifiedTopology=true",
+        "port": "27017",
+        "db": "driversafe_iot",
+        "name": "DriverSafe MongoDB"
+    },
+    {
+        "id": "81a68cd2262b792f",
+        "type": "global-config",
+        "env": [],
+        "modules": {
+            "node-red-node-mongodb": "0.2.5"
+        }
+    }
+]

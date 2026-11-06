@@ -1,0 +1,26 @@
+# Entorno
+.env
+*.env
+!.env.example
+
+# Node
+node_modules/
+dist/
+*.tsbuildinfo
+*.log
+npm-debug.log*
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Editor / SO
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Herramientas locales
+.impeccable/
