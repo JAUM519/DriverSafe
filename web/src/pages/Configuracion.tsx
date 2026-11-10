@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Activity, CheckCircle, Heart, RotateCcw, Save, Shield } from "lucide-react";
+import { Activity, CheckCircle, Heart, RotateCcw, Save, Shield, UserPlus } from "lucide-react";
 import { api, useApi } from "../api/cliente";
 import type { Configuracion as TConfig, Umbrales } from "../api/tipos";
 import { Pagina, Topbar } from "../components/Layout";
@@ -141,6 +141,13 @@ export function Configuracion() {
                 </button>
               </div>
 
+              <RegistrarConductor
+                onCreado={async (nuevo) => {
+                  await recargar();
+                  setId(nuevo);
+                }}
+              />
+
               <Card className="p-6">
                 <h3 className="font-bold text-gray-900 text-base mb-4">Parámetros del sistema</h3>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -164,5 +171,56 @@ export function Configuracion() {
         </div>
       </Pagina>
     </>
+  );
+}
+
+function RegistrarConductor({ onCreado }: { onCreado: (id: string) => void }) {
+  const [form, setForm] = useState({ id_conductor: "", nombre: "", vehiculo: "" });
+  const [estado, setEstado] = useState<{ tipo: "ok" | "error"; texto: string } | null>(null);
+  const [enviando, setEnviando] = useState(false);
+
+  const enviar = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setEnviando(true);
+    setEstado(null);
+    try {
+      const creado = await api<{ id_conductor: string }>("/conductores", { method: "POST", body: JSON.stringify(form) });
+      setEstado({ tipo: "ok", texto: `Conductor ${creado.id_conductor} registrado` });
+      setForm({ id_conductor: "", nombre: "", vehiculo: "" });
+      onCreado(creado.id_conductor);
+    } catch (err) {
+      setEstado({ tipo: "error", texto: err instanceof Error ? err.message : "No se pudo registrar" });
+    } finally {
+      setEnviando(false);
+    }
+  };
+
+  const campo = "w-full px-3 py-2 border border-border rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500";
+
+  return (
+    <Card className="p-6">
+      <div className="flex items-center gap-3 mb-5">
+        <div className="w-9 h-9 rounded-xl flex items-center justify-center bg-green-100 text-green-600"><UserPlus size={18} /></div>
+        <div>
+          <h3 className="font-bold text-gray-900 text-base">Registrar conductor</h3>
+          <p className="text-xs text-muted-foreground">Usa los umbrales por defecto hasta que se configuren</p>
+        </div>
+      </div>
+      <form onSubmit={enviar} className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <input className={campo} placeholder="ID (BUS05-COND05)" required value={form.id_conductor}
+          onChange={(e) => setForm({ ...form, id_conductor: e.target.value })} aria-label="ID del conductor" />
+        <input className={campo} placeholder="Nombre completo" required value={form.nombre}
+          onChange={(e) => setForm({ ...form, nombre: e.target.value })} aria-label="Nombre" />
+        <input className={campo} placeholder="Vehículo (opcional)" value={form.vehiculo}
+          onChange={(e) => setForm({ ...form, vehiculo: e.target.value })} aria-label="Vehículo" />
+        <div className="sm:col-span-3 flex items-center gap-3 flex-wrap">
+          <button type="submit" disabled={enviando}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-semibold text-sm bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60">
+            <UserPlus size={16} />{enviando ? "Registrando..." : "Registrar"}
+          </button>
+          {estado && <span className={`text-sm ${estado.tipo === "ok" ? "text-green-700" : "text-red-600"}`}>{estado.texto}</span>}
+        </div>
+      </form>
+    </Card>
   );
 }

@@ -80,7 +80,8 @@
         "wires": [
             [
                 "074778a64d18d989",
-                "78b614b957ef59a1"
+                "78b614b957ef59a1",
+                "b9343c9f1acc1a46"
             ]
         ]
     },
@@ -749,7 +750,2120 @@
         "type": "global-config",
         "env": [],
         "modules": {
-            "node-red-node-mongodb": "0.2.5"
+            "node-red-node-mongodb": "0.2.5",
+            "@flowfuse/node-red-dashboard": "1.36.0"
         }
+    },
+    {
+        "id": "c4d867cb867240f9",
+        "type": "tab",
+        "label": "API REST",
+        "disabled": false,
+        "info": "Endpoints REST que consume la aplicación web (prefijo /api/driversafe).",
+        "env": []
+    },
+    {
+        "id": "1f4271f0f358ba53",
+        "type": "json",
+        "z": "c4d867cb867240f9",
+        "name": "JSON",
+        "property": "payload",
+        "action": "str",
+        "pretty": false,
+        "x": 1530,
+        "y": 560,
+        "wires": [
+            [
+                "c2e4bdf1a05e2612"
+            ]
+        ]
+    },
+    {
+        "id": "c2e4bdf1a05e2612",
+        "type": "change",
+        "z": "c4d867cb867240f9",
+        "name": "Headers",
+        "rules": [
+            {
+                "t": "set",
+                "p": "headers",
+                "pt": "msg",
+                "to": "{\"Content-Type\": \"application/json; charset=utf-8\", \"Access-Control-Allow-Origin\": \"*\"}",
+                "tot": "json"
+            }
+        ],
+        "action": "",
+        "property": "",
+        "to": "",
+        "reg": false,
+        "x": 1680,
+        "y": 560,
+        "wires": [
+            [
+                "8def1b777d42b136"
+            ]
+        ],
+        "from": ""
+    },
+    {
+        "id": "8def1b777d42b136",
+        "type": "http response",
+        "z": "c4d867cb867240f9",
+        "name": "Respuesta HTTP",
+        "statusCode": "",
+        "headers": {},
+        "x": 1850,
+        "y": 560,
+        "wires": []
+    },
+    {
+        "id": "e093332a8616da45",
+        "type": "catch",
+        "z": "c4d867cb867240f9",
+        "name": "Errores",
+        "scope": null,
+        "uncaught": false,
+        "x": 1290,
+        "y": 640,
+        "wires": [
+            [
+                "6b8941e69277513e"
+            ]
+        ]
+    },
+    {
+        "id": "6b8941e69277513e",
+        "type": "function",
+        "z": "c4d867cb867240f9",
+        "name": "Error 500",
+        "func": "if (!msg.res) return null;\nmsg.statusCode = 500;\nmsg.payload = { error: \"Error consultando la base de datos\" };\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 1430,
+        "y": 640,
+        "wires": [
+            [
+                "1f4271f0f358ba53"
+            ]
+        ]
+    },
+    {
+        "id": "881bdfc79b0fd2ae",
+        "type": "function",
+        "z": "c4d867cb867240f9",
+        "name": "Iniciar sesión",
+        "func": "const ahora = Date.now();\nconst ip = msg.req.ip || \"\";\nconst intentos = global.get(\"intentos_login\") || {};\nconst previo = intentos[ip];\n\nif (previo && previo.n >= 5 && ahora < previo.hasta) {\n    msg.statusCode = 429;\n    msg.payload = { error: \"Demasiados intentos. Espera un minuto.\" };\n    return msg;\n}\n\nconst { usuario, clave } = msg.payload || {};\nif (usuario !== \"supervisor\" || clave !== (env.get(\"DASHBOARD_PASSWORD\") || \"admin\")) {\n    intentos[ip] = { n: previo && ahora < previo.hasta ? previo.n + 1 : 1, hasta: ahora + 60000 };\n    global.set(\"intentos_login\", intentos);\n    msg.statusCode = 401;\n    msg.payload = { error: \"Usuario o contraseña incorrectos\" };\n    return msg;\n}\n\ndelete intentos[ip];\nglobal.set(\"intentos_login\", intentos);\n\nconst sesiones = global.get(\"sesiones\") || {};\nfor (const t of Object.keys(sesiones)) {\n    if (sesiones[t] < ahora) delete sesiones[t];\n}\nconst token = crypto.randomBytes(32).toString(\"hex\");\nsesiones[token] = ahora + 12 * 3600 * 1000;\nglobal.set(\"sesiones\", sesiones);\n\nmsg.payload = { token, usuario: \"supervisor\" };\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [
+            {
+                "var": "crypto",
+                "module": "crypto"
+            }
+        ],
+        "x": 420,
+        "y": 100,
+        "wires": [
+            [
+                "1f4271f0f358ba53"
+            ]
+        ]
+    },
+    {
+        "id": "0d6134801126cbf0",
+        "type": "http in",
+        "z": "c4d867cb867240f9",
+        "name": "",
+        "url": "/api/driversafe/login",
+        "method": "post",
+        "upload": false,
+        "swaggerDoc": "",
+        "x": 170,
+        "y": 100,
+        "wires": [
+            [
+                "881bdfc79b0fd2ae"
+            ]
+        ]
+    },
+    {
+        "id": "d54f45f4188a06c4",
+        "type": "function",
+        "z": "c4d867cb867240f9",
+        "name": "Consultar sesión",
+        "func": "const token = (msg.req.headers.authorization || \"\").replace(/^Bearer /, \"\");\nconst sesiones = global.get(\"sesiones\") || {};\nmsg.payload = { usuario: sesiones[token] > Date.now() ? \"supervisor\" : null };\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 420,
+        "y": 160,
+        "wires": [
+            [
+                "1f4271f0f358ba53"
+            ]
+        ]
+    },
+    {
+        "id": "0917f4700bebfce3",
+        "type": "http in",
+        "z": "c4d867cb867240f9",
+        "name": "",
+        "url": "/api/driversafe/sesion",
+        "method": "get",
+        "upload": false,
+        "swaggerDoc": "",
+        "x": 170,
+        "y": 160,
+        "wires": [
+            [
+                "d54f45f4188a06c4"
+            ]
+        ]
+    },
+    {
+        "id": "23b7ad3f6799d762",
+        "type": "function",
+        "z": "c4d867cb867240f9",
+        "name": "Cerrar sesión",
+        "func": "const token = (msg.req.headers.authorization || \"\").replace(/^Bearer /, \"\");\nconst sesiones = global.get(\"sesiones\") || {};\ndelete sesiones[token];\nglobal.set(\"sesiones\", sesiones);\nmsg.payload = { ok: true };\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 420,
+        "y": 220,
+        "wires": [
+            [
+                "1f4271f0f358ba53"
+            ]
+        ]
+    },
+    {
+        "id": "92d40133c5ae7dda",
+        "type": "http in",
+        "z": "c4d867cb867240f9",
+        "name": "",
+        "url": "/api/driversafe/sesion",
+        "method": "delete",
+        "upload": false,
+        "swaggerDoc": "",
+        "x": 170,
+        "y": 220,
+        "wires": [
+            [
+                "23b7ad3f6799d762"
+            ]
+        ]
+    },
+    {
+        "id": "a0711b4427c67e23",
+        "type": "function",
+        "z": "c4d867cb867240f9",
+        "name": "Flota: respuesta",
+        "func": "const ahora = msg.ahora;\nconst EN_LINEA_MS = 60000;\nconst PAUSA_SESION_MS = 30 * 60000;\nconst VENTANA_MOVIMIENTO_MS = 10000;\nconst DEFECTO = {\n    fc_min_normal: 60, fc_max_normal: 100, spo2_min_normal: 90,\n    spo2_prealerta_min: 85, spo2_prealerta_max: 89, fc_caida_prealerta: 5,\n    fc_critica: 60, spo2_critica: 80, lecturas_criticas: 3\n};\n\nconst ultimo = (lista) => Object.fromEntries(lista.map((x) => [String(x._id), x.doc]));\nconst tiempo = (d) => (d ? new Date(d).getTime() : null);\n\nconst registro = Object.fromEntries(msg.conductores.map((c) => [String(c.id_conductor), c]));\nconst mediciones = ultimo(msg.mediciones);\nconst estados = ultimo(msg.estados);\nconst movimientos = ultimo(msg.movimientos);\nconst configs = Object.fromEntries(msg.configs.map((c) => [String(c.id_conductor), c]));\nconst minutos = Object.fromEntries(msg.minutos.map((x) => [\n    String(x._id),\n    x.minutos.map((d) => new Date(d).getTime()).sort((a, b) => b - a)\n]));\n\nfunction inicioSesion(id) {\n    const m = minutos[id] || [];\n    if (!m.length) return null;\n    let inicio = m[0];\n    for (let i = 1; i < m.length; i++) {\n        if (m[i - 1] - m[i] > PAUSA_SESION_MS) break;\n        inicio = m[i];\n    }\n    return new Date(inicio);\n}\n\nfunction umbrales(id) {\n    const c = configs[id] || {};\n    return Object.fromEntries(Object.keys(DEFECTO).map((k) => {\n        const v = Number(c[k]);\n        return [k, Number.isFinite(v) ? v : DEFECTO[k]];\n    }));\n}\n\nconst recientes = Object.keys(mediciones).filter((id) => ahora - tiempo(mediciones[id].timestamp_servidor) <= 7 * 86400000);\nconst ids = [...new Set([...Object.keys(registro), ...recientes])].sort();\n\nconst conductores = ids.map((id) => {\n    const m = mediciones[id];\n    const e = estados[id];\n    const reg = registro[id];\n    const tMedicion = m ? tiempo(m.timestamp_servidor) : null;\n    const tMov = movimientos[id] ? tiempo(movimientos[id].timestamp_servidor) : null;\n    const enLinea = tMedicion !== null && ahora - tMedicion <= EN_LINEA_MS;\n    return {\n        id,\n        nombre: reg ? reg.nombre : null,\n        vehiculo: reg && reg.vehiculo ? reg.vehiculo : id.split(\"-\")[0],\n        registrado: Boolean(reg),\n        activo_registro: reg ? reg.activo : null,\n        en_linea: enLinea,\n        ultima_lectura: tMedicion ? new Date(tMedicion) : null,\n        fc: m ? Number(m.frecuencia_cardiaca) : null,\n        spo2: m ? Number(m.spo2) : null,\n        spo2_valida: !(tMov && tMedicion && tMedicion >= tMov && tMedicion - tMov <= VENTANA_MOVIMIENTO_MS),\n        ultimo_movimiento: tMov ? new Date(tMov) : null,\n        estado: e ? e.estado : null,\n        accion: e ? e.accion : null,\n        promedio_fc: e ? e.promedio_fc : null,\n        criticas_consecutivas: e ? e.criticas_consecutivas : null,\n        estado_desde: e ? e.timestamp : null,\n        inicio_sesion: enLinea ? inicioSesion(id) : null,\n        umbrales: umbrales(id)\n    };\n});\n\nconst alertas = msg.payload;\nconst enLinea = new Set(conductores.filter((c) => c.en_linea).map((c) => c.id));\nconst desde = (a) => tiempo(a.timestamp_inicio);\nconst criticas = alertas.filter((a) => a.tipo_alerta === \"ALERTA_CRITICA\");\n\nmsg.payload = {\n    generado: new Date(ahora),\n    conductores,\n    resumen: {\n        criticas_hoy: criticas.filter((a) => desde(a) >= msg.hoy).length,\n        criticas_ayer: criticas.filter((a) => desde(a) >= msg.hoy - 86400000 && desde(a) < msg.hoy).length,\n        alertas_hoy: alertas.filter((a) => desde(a) >= msg.hoy).length,\n        alertas_vigentes: alertas.filter((a) => a.activa && enLinea.has(String(a.id_conductor))).length\n    }\n};\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 420,
+        "y": 860,
+        "wires": [
+            [
+                "1f4271f0f358ba53"
+            ]
+        ]
+    },
+    {
+        "id": "38a2665fbc3e8b42",
+        "type": "mongodb in",
+        "z": "c4d867cb867240f9",
+        "mongodb": "d94e8078009d4ac8",
+        "name": "alertas (find)",
+        "collection": "alertas",
+        "operation": "find",
+        "x": 720,
+        "y": 780,
+        "wires": [
+            [
+                "a0711b4427c67e23"
+            ]
+        ]
+    },
+    {
+        "id": "b11b3d64598ea2fd",
+        "type": "function",
+        "z": "c4d867cb867240f9",
+        "name": "Flota: alertas",
+        "func": "msg.configs = msg.payload;\nconst DIA = 86400000;\nconst OFFSET = -5 * 3600000;\nmsg.hoy = Math.floor((msg.ahora + OFFSET) / DIA) * DIA - OFFSET;\nmsg.payload = { $or: [{ activa: true }, { timestamp_inicio: { $gte: new Date(msg.hoy - DIA) } }] };\nmsg.projection = { id_conductor: 1, tipo_alerta: 1, activa: 1, timestamp_inicio: 1 };\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 420,
+        "y": 780,
+        "wires": [
+            [
+                "38a2665fbc3e8b42"
+            ]
+        ]
+    },
+    {
+        "id": "ea85475d445ad6b3",
+        "type": "mongodb in",
+        "z": "c4d867cb867240f9",
+        "mongodb": "d94e8078009d4ac8",
+        "name": "configuracion_conductor (find)",
+        "collection": "configuracion_conductor",
+        "operation": "find",
+        "x": 720,
+        "y": 700,
+        "wires": [
+            [
+                "b11b3d64598ea2fd"
+            ]
+        ]
+    },
+    {
+        "id": "efdf0359b50556b8",
+        "type": "function",
+        "z": "c4d867cb867240f9",
+        "name": "Flota: umbrales",
+        "func": "msg.minutos = msg.payload;\nmsg.payload = {};\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 420,
+        "y": 700,
+        "wires": [
+            [
+                "ea85475d445ad6b3"
+            ]
+        ]
+    },
+    {
+        "id": "c5c9e0dea47176e1",
+        "type": "mongodb in",
+        "z": "c4d867cb867240f9",
+        "mongodb": "d94e8078009d4ac8",
+        "name": "mediciones (aggregate)",
+        "collection": "mediciones",
+        "operation": "aggregate",
+        "x": 720,
+        "y": 620,
+        "wires": [
+            [
+                "efdf0359b50556b8"
+            ]
+        ]
+    },
+    {
+        "id": "853c8de2ff1518c8",
+        "type": "function",
+        "z": "c4d867cb867240f9",
+        "name": "Flota: minutos con lecturas",
+        "func": "msg.movimientos = msg.payload;\nmsg.payload = [\n    { $match: { timestamp_servidor: { $gte: new Date(msg.ahora - 16 * 3600000) } } },\n    { $group: { _id: { id: \"$id_conductor\", m: { $dateTrunc: { date: \"$timestamp_servidor\", unit: \"minute\" } } } } },\n    { $group: { _id: \"$_id.id\", minutos: { $push: \"$_id.m\" } } }\n];\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 420,
+        "y": 620,
+        "wires": [
+            [
+                "c5c9e0dea47176e1"
+            ]
+        ]
+    },
+    {
+        "id": "591c02b786a3ce85",
+        "type": "mongodb in",
+        "z": "c4d867cb867240f9",
+        "mongodb": "d94e8078009d4ac8",
+        "name": "eventos_movimiento (aggregate)",
+        "collection": "eventos_movimiento",
+        "operation": "aggregate",
+        "x": 720,
+        "y": 540,
+        "wires": [
+            [
+                "853c8de2ff1518c8"
+            ]
+        ]
+    },
+    {
+        "id": "9916f8806832237b",
+        "type": "function",
+        "z": "c4d867cb867240f9",
+        "name": "Flota: último movimiento",
+        "func": "msg.estados = msg.payload;\nmsg.payload = [\n    { $sort: { id_conductor: 1, timestamp_servidor: -1 } },\n    { $group: { _id: \"$id_conductor\", doc: { $first: \"$$ROOT\" } } }\n];\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 420,
+        "y": 540,
+        "wires": [
+            [
+                "591c02b786a3ce85"
+            ]
+        ]
+    },
+    {
+        "id": "59e43cd560ef62b1",
+        "type": "mongodb in",
+        "z": "c4d867cb867240f9",
+        "mongodb": "d94e8078009d4ac8",
+        "name": "estados (aggregate)",
+        "collection": "estados",
+        "operation": "aggregate",
+        "x": 720,
+        "y": 460,
+        "wires": [
+            [
+                "9916f8806832237b"
+            ]
+        ]
+    },
+    {
+        "id": "2a5ab4cccb408ebf",
+        "type": "function",
+        "z": "c4d867cb867240f9",
+        "name": "Flota: último estado",
+        "func": "msg.mediciones = msg.payload;\nmsg.payload = [\n    { $sort: { id_conductor: 1, timestamp: -1 } },\n    { $group: { _id: \"$id_conductor\", doc: { $first: \"$$ROOT\" } } }\n];\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 420,
+        "y": 460,
+        "wires": [
+            [
+                "59e43cd560ef62b1"
+            ]
+        ]
+    },
+    {
+        "id": "d399cc2bb95bb346",
+        "type": "mongodb in",
+        "z": "c4d867cb867240f9",
+        "mongodb": "d94e8078009d4ac8",
+        "name": "mediciones (aggregate)",
+        "collection": "mediciones",
+        "operation": "aggregate",
+        "x": 720,
+        "y": 380,
+        "wires": [
+            [
+                "2a5ab4cccb408ebf"
+            ]
+        ]
+    },
+    {
+        "id": "832fc0aae532c422",
+        "type": "function",
+        "z": "c4d867cb867240f9",
+        "name": "Flota: última medición",
+        "func": "msg.conductores = msg.payload;\nmsg.payload = [\n    { $sort: { id_conductor: 1, timestamp_servidor: -1 } },\n    { $group: { _id: \"$id_conductor\", doc: { $first: \"$$ROOT\" } } }\n];\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 420,
+        "y": 380,
+        "wires": [
+            [
+                "d399cc2bb95bb346"
+            ]
+        ]
+    },
+    {
+        "id": "6dda3ddf93b6582c",
+        "type": "mongodb in",
+        "z": "c4d867cb867240f9",
+        "mongodb": "d94e8078009d4ac8",
+        "name": "conductores (find)",
+        "collection": "conductores",
+        "operation": "find",
+        "x": 720,
+        "y": 300,
+        "wires": [
+            [
+                "832fc0aae532c422"
+            ]
+        ]
+    },
+    {
+        "id": "8a5869a276ab0edc",
+        "type": "function",
+        "z": "c4d867cb867240f9",
+        "name": "Flota: conductores",
+        "func": "const token = (msg.req.headers.authorization || \"\").replace(/^Bearer /, \"\");\nconst sesiones = global.get(\"sesiones\") || {};\nif (!sesiones[token] || sesiones[token] < Date.now()) {\n    msg.statusCode = 401;\n    msg.payload = { error: \"Sesión inválida o vencida\" };\n    return [null, msg];\n}\n\nmsg.ahora = Date.now();\nmsg.payload = {};\nreturn [msg, null];",
+        "outputs": 2,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 420,
+        "y": 300,
+        "wires": [
+            [
+                "6dda3ddf93b6582c"
+            ],
+            [
+                "1f4271f0f358ba53"
+            ]
+        ]
+    },
+    {
+        "id": "ce9025408d7f8def",
+        "type": "http in",
+        "z": "c4d867cb867240f9",
+        "name": "",
+        "url": "/api/driversafe/flota",
+        "method": "get",
+        "upload": false,
+        "swaggerDoc": "",
+        "x": 170,
+        "y": 300,
+        "wires": [
+            [
+                "8a5869a276ab0edc"
+            ]
+        ]
+    },
+    {
+        "id": "1853fc684e34225f",
+        "type": "function",
+        "z": "c4d867cb867240f9",
+        "name": "Series: respuesta",
+        "func": "msg.payload = { minutos: msg.minutos, paso: msg.paso, filas: msg.payload };\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 980,
+        "y": 960,
+        "wires": [
+            [
+                "1f4271f0f358ba53"
+            ]
+        ]
+    },
+    {
+        "id": "447e18be141ac6ec",
+        "type": "mongodb in",
+        "z": "c4d867cb867240f9",
+        "mongodb": "d94e8078009d4ac8",
+        "name": "mediciones (aggregate)",
+        "collection": "mediciones",
+        "operation": "aggregate",
+        "x": 720,
+        "y": 960,
+        "wires": [
+            [
+                "1853fc684e34225f"
+            ]
+        ]
+    },
+    {
+        "id": "8507a5957ebc91e6",
+        "type": "function",
+        "z": "c4d867cb867240f9",
+        "name": "Series: consulta",
+        "func": "const token = (msg.req.headers.authorization || \"\").replace(/^Bearer /, \"\");\nconst sesiones = global.get(\"sesiones\") || {};\nif (!sesiones[token] || sesiones[token] < Date.now()) {\n    msg.statusCode = 401;\n    msg.payload = { error: \"Sesión inválida o vencida\" };\n    return [null, msg];\n}\n\nconst q = msg.req.query;\nconst n = Number(q.minutos);\nconst minutos = Number.isFinite(n) && n > 0 ? Math.min(Math.floor(n), 1440) : 30;\nconst paso = minutos <= 15\n    ? { unit: \"second\", binSize: 15 }\n    : { unit: \"minute\", binSize: Math.max(1, Math.round(minutos / 60)) };\n\nconst filtro = { timestamp_servidor: { $gte: new Date(Date.now() - minutos * 60000) } };\nif (q.conductor) filtro.id_conductor = String(q.conductor);\n\nmsg.minutos = minutos;\nmsg.paso = paso;\nmsg.payload = [\n    { $match: filtro },\n    { $group: {\n        _id: { id: \"$id_conductor\", t: { $dateTrunc: { date: \"$timestamp_servidor\", unit: paso.unit, binSize: paso.binSize } } },\n        fc: { $avg: \"$frecuencia_cardiaca\" },\n        spo2: { $avg: \"$spo2\" },\n        n: { $sum: 1 }\n    } },\n    { $sort: { \"_id.t\": 1 } },\n    { $project: { _id: 0, id: \"$_id.id\", t: \"$_id.t\", fc: { $round: [\"$fc\", 1] }, spo2: { $round: [\"$spo2\", 1] }, n: 1 } }\n];\nreturn [msg, null];",
+        "outputs": 2,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 420,
+        "y": 960,
+        "wires": [
+            [
+                "447e18be141ac6ec"
+            ],
+            [
+                "1f4271f0f358ba53"
+            ]
+        ]
+    },
+    {
+        "id": "c031d6b6c8633513",
+        "type": "http in",
+        "z": "c4d867cb867240f9",
+        "name": "",
+        "url": "/api/driversafe/series",
+        "method": "get",
+        "upload": false,
+        "swaggerDoc": "",
+        "x": 170,
+        "y": 960,
+        "wires": [
+            [
+                "8507a5957ebc91e6"
+            ]
+        ]
+    },
+    {
+        "id": "f8c6876a1841a44b",
+        "type": "mongodb in",
+        "z": "c4d867cb867240f9",
+        "mongodb": "d94e8078009d4ac8",
+        "name": "alertas (find)",
+        "collection": "alertas",
+        "operation": "find",
+        "x": 720,
+        "y": 1040,
+        "wires": [
+            [
+                "1f4271f0f358ba53"
+            ]
+        ]
+    },
+    {
+        "id": "02c014385f328cde",
+        "type": "function",
+        "z": "c4d867cb867240f9",
+        "name": "Alertas: consulta",
+        "func": "const token = (msg.req.headers.authorization || \"\").replace(/^Bearer /, \"\");\nconst sesiones = global.get(\"sesiones\") || {};\nif (!sesiones[token] || sesiones[token] < Date.now()) {\n    msg.statusCode = 401;\n    msg.payload = { error: \"Sesión inválida o vencida\" };\n    return [null, msg];\n}\n\nconst q = msg.req.query;\nconst filtro = {};\nif (q.activa === \"true\") filtro.activa = true;\nif (q.activa === \"false\") filtro.activa = false;\nif (q.tipo === \"ALERTA_CRITICA\" || q.tipo === \"PRE_ALERTA\") filtro.tipo_alerta = q.tipo;\nif (q.conductor) filtro.id_conductor = String(q.conductor);\n\nconst desde = Date.parse(q.desde || \"\");\nconst hasta = Date.parse(q.hasta || \"\");\nif (Number.isFinite(desde) || Number.isFinite(hasta)) {\n    filtro.timestamp_inicio = {};\n    if (Number.isFinite(desde)) filtro.timestamp_inicio.$gte = new Date(desde);\n    if (Number.isFinite(hasta)) filtro.timestamp_inicio.$lt = new Date(hasta);\n}\n\nconst limite = Number(q.limit);\nmsg.payload = filtro;\nmsg.sort = { timestamp_inicio: -1 };\nmsg.limit = Number.isFinite(limite) && limite > 0 ? Math.min(Math.floor(limite), 1000) : 100;\nreturn [msg, null];",
+        "outputs": 2,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 420,
+        "y": 1040,
+        "wires": [
+            [
+                "f8c6876a1841a44b"
+            ],
+            [
+                "1f4271f0f358ba53"
+            ]
+        ]
+    },
+    {
+        "id": "a0f906c72e99c6bc",
+        "type": "http in",
+        "z": "c4d867cb867240f9",
+        "name": "",
+        "url": "/api/driversafe/alertas",
+        "method": "get",
+        "upload": false,
+        "swaggerDoc": "",
+        "x": 170,
+        "y": 1040,
+        "wires": [
+            [
+                "02c014385f328cde"
+            ]
+        ]
+    },
+    {
+        "id": "60e81f3bcab3596a",
+        "type": "mongodb out",
+        "z": "c4d867cb867240f9",
+        "mongodb": "d94e8078009d4ac8",
+        "name": "alertas (update)",
+        "collection": "alertas",
+        "payonly": true,
+        "upsert": false,
+        "multi": false,
+        "operation": "update",
+        "x": 720,
+        "y": 1120,
+        "wires": []
+    },
+    {
+        "id": "8b638ec6d270a96d",
+        "type": "function",
+        "z": "c4d867cb867240f9",
+        "name": "Alertas: marcar revisada",
+        "func": "const token = (msg.req.headers.authorization || \"\").replace(/^Bearer /, \"\");\nconst sesiones = global.get(\"sesiones\") || {};\nif (!sesiones[token] || sesiones[token] < Date.now()) {\n    msg.statusCode = 401;\n    msg.payload = { error: \"Sesión inválida o vencida\" };\n    return [null, msg];\n}\n\nconst nota = msg.payload && typeof msg.payload.nota === \"string\" ? msg.payload.nota.slice(0, 500) : null;\nconst actualizacion = {\n    query: { _id: msg.req.params.id },\n    payload: { $set: { revisada: true, revisada_en: new Date(), nota_supervisor: nota } }\n};\nmsg.payload = { ok: true };\nreturn [actualizacion, msg];",
+        "outputs": 2,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 420,
+        "y": 1120,
+        "wires": [
+            [
+                "60e81f3bcab3596a"
+            ],
+            [
+                "1f4271f0f358ba53"
+            ]
+        ]
+    },
+    {
+        "id": "302769988972f03b",
+        "type": "http in",
+        "z": "c4d867cb867240f9",
+        "name": "",
+        "url": "/api/driversafe/alertas/:id/revisar",
+        "method": "put",
+        "upload": false,
+        "swaggerDoc": "",
+        "x": 200,
+        "y": 1120,
+        "wires": [
+            [
+                "8b638ec6d270a96d"
+            ]
+        ]
+    },
+    {
+        "id": "d6ab63d059345eec",
+        "type": "function",
+        "z": "c4d867cb867240f9",
+        "name": "Analítica: respuesta",
+        "func": "const nombres = Object.fromEntries(msg.payload.map((c) => [String(c.id_conductor), c.nombre]));\nmsg.payload = {\n    semana: msg.semana,\n    conductores: msg.porConductor.map((c) => ({ ...c, nombre: nombres[c.conductor] || null })),\n    dia_hora: msg.diaHora\n};\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 420,
+        "y": 1520,
+        "wires": [
+            [
+                "1f4271f0f358ba53"
+            ]
+        ]
+    },
+    {
+        "id": "ba30377c1323ab8f",
+        "type": "mongodb in",
+        "z": "c4d867cb867240f9",
+        "mongodb": "d94e8078009d4ac8",
+        "name": "conductores (find)",
+        "collection": "conductores",
+        "operation": "find",
+        "x": 720,
+        "y": 1440,
+        "wires": [
+            [
+                "d6ab63d059345eec"
+            ]
+        ]
+    },
+    {
+        "id": "575ba30d7b04bdb4",
+        "type": "function",
+        "z": "c4d867cb867240f9",
+        "name": "Analítica: nombres",
+        "func": "msg.diaHora = msg.payload;\nmsg.payload = {};\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 420,
+        "y": 1440,
+        "wires": [
+            [
+                "ba30377c1323ab8f"
+            ]
+        ]
+    },
+    {
+        "id": "9a7264c009b5c70a",
+        "type": "mongodb in",
+        "z": "c4d867cb867240f9",
+        "mongodb": "d94e8078009d4ac8",
+        "name": "analisis_dia_hora (find)",
+        "collection": "analisis_dia_hora",
+        "operation": "find",
+        "x": 720,
+        "y": 1360,
+        "wires": [
+            [
+                "575ba30d7b04bdb4"
+            ]
+        ]
+    },
+    {
+        "id": "57fc0e97b839fe12",
+        "type": "function",
+        "z": "c4d867cb867240f9",
+        "name": "Analítica: día y hora",
+        "func": "msg.porConductor = msg.payload;\nmsg.payload = {};\nmsg.sort = { dia: 1, hora: 1 };\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 420,
+        "y": 1360,
+        "wires": [
+            [
+                "9a7264c009b5c70a"
+            ]
+        ]
+    },
+    {
+        "id": "509a4eaf10e7ae7f",
+        "type": "mongodb in",
+        "z": "c4d867cb867240f9",
+        "mongodb": "d94e8078009d4ac8",
+        "name": "analisis_conductor (find)",
+        "collection": "analisis_conductor",
+        "operation": "find",
+        "x": 720,
+        "y": 1280,
+        "wires": [
+            [
+                "57fc0e97b839fe12"
+            ]
+        ]
+    },
+    {
+        "id": "b8846a066c3b9e0f",
+        "type": "function",
+        "z": "c4d867cb867240f9",
+        "name": "Analítica: conductores",
+        "func": "msg.semana = msg.payload[0] || null;\nmsg.payload = {};\nmsg.sort = { conductor: 1 };\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 420,
+        "y": 1280,
+        "wires": [
+            [
+                "509a4eaf10e7ae7f"
+            ]
+        ]
+    },
+    {
+        "id": "8b8e44e48feb4968",
+        "type": "mongodb in",
+        "z": "c4d867cb867240f9",
+        "mongodb": "d94e8078009d4ac8",
+        "name": "analisis_semana (find)",
+        "collection": "analisis_semana",
+        "operation": "find",
+        "x": 720,
+        "y": 1200,
+        "wires": [
+            [
+                "b8846a066c3b9e0f"
+            ]
+        ]
+    },
+    {
+        "id": "5fa2c0e93fc7b199",
+        "type": "function",
+        "z": "c4d867cb867240f9",
+        "name": "Analítica: semana",
+        "func": "const token = (msg.req.headers.authorization || \"\").replace(/^Bearer /, \"\");\nconst sesiones = global.get(\"sesiones\") || {};\nif (!sesiones[token] || sesiones[token] < Date.now()) {\n    msg.statusCode = 401;\n    msg.payload = { error: \"Sesión inválida o vencida\" };\n    return [null, msg];\n}\n\nmsg.payload = { _id: \"semana\" };\nreturn [msg, null];",
+        "outputs": 2,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 420,
+        "y": 1200,
+        "wires": [
+            [
+                "8b8e44e48feb4968"
+            ],
+            [
+                "1f4271f0f358ba53"
+            ]
+        ]
+    },
+    {
+        "id": "da91a110695cce37",
+        "type": "http in",
+        "z": "c4d867cb867240f9",
+        "name": "",
+        "url": "/api/driversafe/analitica",
+        "method": "get",
+        "upload": false,
+        "swaggerDoc": "",
+        "x": 170,
+        "y": 1200,
+        "wires": [
+            [
+                "5fa2c0e93fc7b199"
+            ]
+        ]
+    },
+    {
+        "id": "3a8d83f637a24ced",
+        "type": "function",
+        "z": "c4d867cb867240f9",
+        "name": "Configuración: respuesta",
+        "func": "const PREFIJO = \"sergio.vnsquez@uao.edu.co/tp01\";\nconst DEFECTO = {\n    fc_min_normal: 60, fc_max_normal: 100, spo2_min_normal: 90,\n    spo2_prealerta_min: 85, spo2_prealerta_max: 89, fc_caida_prealerta: 5,\n    fc_critica: 60, spo2_critica: 80, lecturas_criticas: 3\n};\n\nconst configs = Object.fromEntries(msg.payload.map((c) => [String(c.id_conductor), c]));\nconst nombres = Object.fromEntries(msg.conductores.map((c) => [String(c.id_conductor), c.nombre]));\nconst ids = [...new Set([...Object.keys(nombres), ...Object.keys(configs)])].sort();\n\nmsg.payload = {\n    sistema: {\n        broker: \"maqiatto.com:1883\",\n        topico_datos: PREFIJO + \"/datos\",\n        topico_comando: PREFIJO + \"/command/<id_conductor>\",\n        intervalo_muestreo_s: 1,\n        ventana_movimiento_s: 10,\n        ventana_movimiento_fatiga_s: 5,\n        zona_horaria: \"America/Bogota\"\n    },\n    por_defecto: DEFECTO,\n    conductores: ids.map((id) => {\n        const c = configs[id];\n        const umbrales = Object.fromEntries(Object.keys(DEFECTO).map((k) => {\n            const v = Number(c && c[k]);\n            return [k, Number.isFinite(v) ? v : DEFECTO[k]];\n        }));\n        return {\n            id_conductor: id,\n            nombre: nombres[id] || null,\n            umbrales,\n            fecha_actualizacion: c ? c.fecha_actualizacion : null,\n            personalizado: Boolean(c)\n        };\n    })\n};\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 980,
+        "y": 1700,
+        "wires": [
+            [
+                "1f4271f0f358ba53"
+            ]
+        ]
+    },
+    {
+        "id": "0a9defc10bfb4cd7",
+        "type": "mongodb in",
+        "z": "c4d867cb867240f9",
+        "mongodb": "d94e8078009d4ac8",
+        "name": "configuracion_conductor (find)",
+        "collection": "configuracion_conductor",
+        "operation": "find",
+        "x": 720,
+        "y": 1700,
+        "wires": [
+            [
+                "3a8d83f637a24ced"
+            ]
+        ]
+    },
+    {
+        "id": "5cbd97f1b87a8847",
+        "type": "function",
+        "z": "c4d867cb867240f9",
+        "name": "Configuración: umbrales",
+        "func": "msg.conductores = msg.payload;\nmsg.payload = {};\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 420,
+        "y": 1700,
+        "wires": [
+            [
+                "0a9defc10bfb4cd7"
+            ]
+        ]
+    },
+    {
+        "id": "44e7d86e0f60f39a",
+        "type": "mongodb in",
+        "z": "c4d867cb867240f9",
+        "mongodb": "d94e8078009d4ac8",
+        "name": "conductores (find)",
+        "collection": "conductores",
+        "operation": "find",
+        "x": 720,
+        "y": 1620,
+        "wires": [
+            [
+                "5cbd97f1b87a8847"
+            ]
+        ]
+    },
+    {
+        "id": "2ed5914f64b9119f",
+        "type": "function",
+        "z": "c4d867cb867240f9",
+        "name": "Configuración: conductores",
+        "func": "const token = (msg.req.headers.authorization || \"\").replace(/^Bearer /, \"\");\nconst sesiones = global.get(\"sesiones\") || {};\nif (!sesiones[token] || sesiones[token] < Date.now()) {\n    msg.statusCode = 401;\n    msg.payload = { error: \"Sesión inválida o vencida\" };\n    return [null, msg];\n}\n\nmsg.payload = {};\nreturn [msg, null];",
+        "outputs": 2,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 420,
+        "y": 1620,
+        "wires": [
+            [
+                "44e7d86e0f60f39a"
+            ],
+            [
+                "1f4271f0f358ba53"
+            ]
+        ]
+    },
+    {
+        "id": "8059f483c9fe362a",
+        "type": "http in",
+        "z": "c4d867cb867240f9",
+        "name": "",
+        "url": "/api/driversafe/configuracion",
+        "method": "get",
+        "upload": false,
+        "swaggerDoc": "",
+        "x": 180,
+        "y": 1620,
+        "wires": [
+            [
+                "2ed5914f64b9119f"
+            ]
+        ]
+    },
+    {
+        "id": "42068b4b98333d48",
+        "type": "mongodb out",
+        "z": "c4d867cb867240f9",
+        "mongodb": "d94e8078009d4ac8",
+        "name": "configuracion_conductor (update)",
+        "collection": "configuracion_conductor",
+        "payonly": true,
+        "upsert": true,
+        "multi": false,
+        "operation": "update",
+        "x": 720,
+        "y": 1780,
+        "wires": []
+    },
+    {
+        "id": "42accfc37526c0ce",
+        "type": "function",
+        "z": "c4d867cb867240f9",
+        "name": "Configuración: guardar",
+        "func": "const token = (msg.req.headers.authorization || \"\").replace(/^Bearer /, \"\");\nconst sesiones = global.get(\"sesiones\") || {};\nif (!sesiones[token] || sesiones[token] < Date.now()) {\n    msg.statusCode = 401;\n    msg.payload = { error: \"Sesión inválida o vencida\" };\n    return [null, msg];\n}\n\nconst CAMPOS = [\n    \"fc_min_normal\", \"fc_max_normal\", \"spo2_min_normal\", \"spo2_prealerta_min\", \"spo2_prealerta_max\",\n    \"fc_caida_prealerta\", \"fc_critica\", \"spo2_critica\", \"lecturas_criticas\"\n];\nconst u = {};\nfor (const k of CAMPOS) {\n    const v = Number((msg.payload || {})[k]);\n    if (!Number.isFinite(v)) {\n        msg.statusCode = 400;\n        msg.payload = { error: \"Valor inválido para \" + k };\n        return [null, msg];\n    }\n    u[k] = v;\n}\n\nconst errores = [];\nif (u.fc_min_normal < 30 || u.fc_max_normal > 220 || u.fc_min_normal >= u.fc_max_normal) errores.push(\"Rango de FC normal inválido\");\nif (u.fc_critica < 30 || u.fc_critica > u.fc_max_normal) errores.push(\"FC crítica fuera de rango\");\nif (u.fc_caida_prealerta < 1 || u.fc_caida_prealerta > 40) errores.push(\"La caída de FC para prealerta debe estar entre 1 y 40\");\nif (!(u.spo2_critica < u.spo2_prealerta_min && u.spo2_prealerta_min <= u.spo2_prealerta_max\n    && u.spo2_prealerta_max < u.spo2_min_normal && u.spo2_min_normal <= 100)) {\n    errores.push(\"Los umbrales de SpO₂ deben cumplir: crítica < prealerta mín ≤ prealerta máx < normal ≤ 100\");\n}\nif (u.spo2_critica < 50) errores.push(\"La SpO₂ crítica debe ser ≥ 50\");\nif (!Number.isInteger(u.lecturas_criticas) || u.lecturas_criticas < 1 || u.lecturas_criticas > 20) {\n    errores.push(\"Las lecturas críticas consecutivas deben ser un entero entre 1 y 20\");\n}\nif (errores.length) {\n    msg.statusCode = 400;\n    msg.payload = { error: errores.join(\". \") };\n    return [null, msg];\n}\n\nconst actualizacion = {\n    query: { id_conductor: msg.req.params.id },\n    payload: { $set: { ...u, fecha_actualizacion: new Date() } }\n};\nmsg.payload = { ok: true };\nreturn [actualizacion, msg];",
+        "outputs": 2,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 420,
+        "y": 1780,
+        "wires": [
+            [
+                "42068b4b98333d48"
+            ],
+            [
+                "1f4271f0f358ba53"
+            ]
+        ]
+    },
+    {
+        "id": "3a6ef4800b345626",
+        "type": "http in",
+        "z": "c4d867cb867240f9",
+        "name": "",
+        "url": "/api/driversafe/configuracion/:id",
+        "method": "put",
+        "upload": false,
+        "swaggerDoc": "",
+        "x": 190,
+        "y": 1780,
+        "wires": [
+            [
+                "42accfc37526c0ce"
+            ]
+        ]
+    },
+    {
+        "id": "1d153adeae1ffc20",
+        "type": "mongodb out",
+        "z": "c4d867cb867240f9",
+        "mongodb": "d94e8078009d4ac8",
+        "name": "conductores (insert)",
+        "collection": "conductores",
+        "payonly": true,
+        "upsert": false,
+        "multi": false,
+        "operation": "insert",
+        "x": 980,
+        "y": 1900,
+        "wires": []
+    },
+    {
+        "id": "3f12244a21fa1816",
+        "type": "function",
+        "z": "c4d867cb867240f9",
+        "name": "Conductores: crear",
+        "func": "if (msg.payload.length) {\n    msg.statusCode = 409;\n    msg.payload = { error: \"Ya existe un conductor con el ID \" + msg.nuevo.id_conductor };\n    return [null, msg];\n}\nconst nuevo = { payload: { ...msg.nuevo, activo: true, fecha_registro: new Date() } };\nmsg.statusCode = 201;\nmsg.payload = msg.nuevo;\nreturn [nuevo, msg];",
+        "outputs": 2,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 980,
+        "y": 1840,
+        "wires": [
+            [
+                "1d153adeae1ffc20"
+            ],
+            [
+                "1f4271f0f358ba53"
+            ]
+        ]
+    },
+    {
+        "id": "39f9100aa206bf98",
+        "type": "mongodb in",
+        "z": "c4d867cb867240f9",
+        "mongodb": "d94e8078009d4ac8",
+        "name": "conductores (find)",
+        "collection": "conductores",
+        "operation": "find",
+        "x": 720,
+        "y": 1860,
+        "wires": [
+            [
+                "3f12244a21fa1816"
+            ]
+        ]
+    },
+    {
+        "id": "6b7703b495c87b16",
+        "type": "function",
+        "z": "c4d867cb867240f9",
+        "name": "Conductores: validar",
+        "func": "const token = (msg.req.headers.authorization || \"\").replace(/^Bearer /, \"\");\nconst sesiones = global.get(\"sesiones\") || {};\nif (!sesiones[token] || sesiones[token] < Date.now()) {\n    msg.statusCode = 401;\n    msg.payload = { error: \"Sesión inválida o vencida\" };\n    return [null, msg];\n}\n\nconst body = msg.payload || {};\nconst id = String(body.id_conductor || \"\").trim().toUpperCase();\nconst nombre = String(body.nombre || \"\").trim();\nconst vehiculo = String(body.vehiculo || id.split(\"-\")[0] || \"\").trim().toUpperCase();\n\nif (!/^[A-Z0-9]+-[A-Z0-9]+$/.test(id) || nombre.length < 3) {\n    msg.statusCode = 400;\n    msg.payload = { error: \"El ID debe tener el formato BUS05-COND05 y el nombre al menos 3 caracteres\" };\n    return [null, msg];\n}\n\nmsg.nuevo = { id_conductor: id, nombre, vehiculo };\nmsg.payload = { id_conductor: id };\nreturn [msg, null];",
+        "outputs": 2,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 420,
+        "y": 1860,
+        "wires": [
+            [
+                "39f9100aa206bf98"
+            ],
+            [
+                "1f4271f0f358ba53"
+            ]
+        ]
+    },
+    {
+        "id": "0ffb663a3ed5ccfb",
+        "type": "http in",
+        "z": "c4d867cb867240f9",
+        "name": "",
+        "url": "/api/driversafe/conductores",
+        "method": "post",
+        "upload": false,
+        "swaggerDoc": "",
+        "x": 180,
+        "y": 1860,
+        "wires": [
+            [
+                "6b7703b495c87b16"
+            ]
+        ]
+    },
+    {
+        "id": "7d84ae0ad1b75b3b",
+        "type": "tab",
+        "label": "Dashboard",
+        "disabled": false,
+        "info": "Dashboard en tiempo real con @flowfuse/node-red-dashboard: http://localhost:1880/dashboard/page1",
+        "env": []
+    },
+    {
+        "id": "47230878f7e0d5c4",
+        "type": "ui-base",
+        "name": "DriverSafe IoT",
+        "path": "/dashboard",
+        "appIcon": "",
+        "includeClientData": true,
+        "acceptsClientConfig": [
+            "ui-notification",
+            "ui-control"
+        ],
+        "showPathInSidebar": false,
+        "headerContent": "page",
+        "navigationStyle": "default",
+        "titleBarStyle": "default",
+        "showReconnectNotification": true,
+        "notificationDisplayTime": 1,
+        "showDisconnectNotification": true,
+        "allowInstall": false
+    },
+    {
+        "id": "1ed2298cda5cad8c",
+        "type": "ui-theme",
+        "name": "DriverSafe",
+        "colors": {
+            "surface": "#1E40AF",
+            "primary": "#2563EB",
+            "bgPage": "#F8FAFC",
+            "groupBg": "#FFFFFF",
+            "groupOutline": "#E2E8F0"
+        },
+        "sizes": {
+            "density": "default",
+            "pagePadding": "16px",
+            "groupGap": "16px",
+            "groupBorderRadius": "12px",
+            "widgetGap": "12px"
+        }
+    },
+    {
+        "id": "ba64e10001326749",
+        "type": "ui-page",
+        "name": "Tiempo real",
+        "ui": "47230878f7e0d5c4",
+        "path": "/page1",
+        "icon": "heart-pulse",
+        "layout": "grid",
+        "theme": "1ed2298cda5cad8c",
+        "breakpoints": [
+            {
+                "name": "Default",
+                "px": 0,
+                "cols": 3
+            },
+            {
+                "name": "Tablet",
+                "px": 576,
+                "cols": 6
+            },
+            {
+                "name": "Small Desktop",
+                "px": 768,
+                "cols": 9
+            },
+            {
+                "name": "Desktop",
+                "px": 1024,
+                "cols": 12
+            }
+        ],
+        "order": 1,
+        "className": "",
+        "visible": "true",
+        "disabled": "false"
+    },
+    {
+        "id": "b9343c9f1acc1a46",
+        "type": "link out",
+        "z": "83587d6539ec1d85",
+        "name": "Al dashboard",
+        "mode": "link",
+        "links": [
+            "b07933db18b44852"
+        ],
+        "x": 1035,
+        "y": 700,
+        "wires": []
+    },
+    {
+        "id": "b07933db18b44852",
+        "type": "link in",
+        "z": "7d84ae0ad1b75b3b",
+        "name": "Lecturas clasificadas",
+        "links": [
+            "b9343c9f1acc1a46"
+        ],
+        "x": 150,
+        "y": 320,
+        "wires": [
+            [
+                "355536832bae99b6",
+                "55cc59fcc011a85d",
+                "d98b3ce2597af97e"
+            ]
+        ]
+    },
+    {
+        "id": "a1ef8810627fbc7e",
+        "type": "ui-group",
+        "name": "BUS01 · Andres Pinilla",
+        "page": "ba64e10001326749",
+        "width": "3",
+        "height": "1",
+        "order": 1,
+        "showTitle": true,
+        "className": "",
+        "visible": "true",
+        "disabled": "false",
+        "groupType": "default"
+    },
+    {
+        "id": "347776abe5b69129",
+        "type": "ui-gauge",
+        "z": "7d84ae0ad1b75b3b",
+        "name": "Frecuencia cardíaca",
+        "group": "a1ef8810627fbc7e",
+        "order": 1,
+        "value": "payload",
+        "valueType": "msg",
+        "width": 3,
+        "height": 3,
+        "gtype": "gauge-half",
+        "gstyle": "rounded",
+        "title": "Frecuencia cardíaca",
+        "alwaysShowTitle": false,
+        "floatingTitlePosition": "top-left",
+        "units": "lpm",
+        "icon": "",
+        "prefix": "",
+        "suffix": "",
+        "segments": [
+            {
+                "from": "30",
+                "color": "#EF4444"
+            },
+            {
+                "from": "60",
+                "color": "#22C55E"
+            },
+            {
+                "from": "100",
+                "color": "#FACC15"
+            }
+        ],
+        "min": 30,
+        "max": 150,
+        "sizeThickness": 16,
+        "sizeGap": 4,
+        "sizeKeyThickness": 8,
+        "styleRounded": true,
+        "styleGlow": false,
+        "className": "",
+        "x": 820,
+        "y": 80,
+        "wires": []
+    },
+    {
+        "id": "ece32cc991fb1dcd",
+        "type": "ui-gauge",
+        "z": "7d84ae0ad1b75b3b",
+        "name": "SpO₂",
+        "group": "a1ef8810627fbc7e",
+        "order": 2,
+        "value": "payload",
+        "valueType": "msg",
+        "width": 3,
+        "height": 3,
+        "gtype": "gauge-half",
+        "gstyle": "rounded",
+        "title": "SpO₂",
+        "alwaysShowTitle": false,
+        "floatingTitlePosition": "top-left",
+        "units": "%",
+        "icon": "",
+        "prefix": "",
+        "suffix": "",
+        "segments": [
+            {
+                "from": "60",
+                "color": "#EF4444"
+            },
+            {
+                "from": "80",
+                "color": "#FACC15"
+            },
+            {
+                "from": "90",
+                "color": "#22C55E"
+            }
+        ],
+        "min": 60,
+        "max": 100,
+        "sizeThickness": 16,
+        "sizeGap": 4,
+        "sizeKeyThickness": 8,
+        "styleRounded": true,
+        "styleGlow": false,
+        "className": "",
+        "x": 820,
+        "y": 120,
+        "wires": []
+    },
+    {
+        "id": "119834e9fb0043b2",
+        "type": "ui-text",
+        "z": "7d84ae0ad1b75b3b",
+        "group": "a1ef8810627fbc7e",
+        "order": 3,
+        "width": 0,
+        "height": 0,
+        "name": "Estado BUS01-COND01",
+        "label": "Estado",
+        "format": "{{msg.payload}}",
+        "layout": "row-spread",
+        "style": false,
+        "font": "Helvetica",
+        "fontSize": 16,
+        "color": "#111827",
+        "wrapText": false,
+        "className": "",
+        "value": "payload",
+        "valueType": "msg",
+        "x": 810,
+        "y": 160,
+        "wires": []
+    },
+    {
+        "id": "bca1f11bf88306aa",
+        "type": "function",
+        "z": "7d84ae0ad1b75b3b",
+        "name": "Extraer datos BUS01",
+        "func": "return [\n    { payload: msg.frecuencia_cardiaca },\n    { payload: msg.spo2 },\n    { payload: msg.estado }\n];",
+        "outputs": 3,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 560,
+        "y": 120,
+        "wires": [
+            [
+                "347776abe5b69129"
+            ],
+            [
+                "ece32cc991fb1dcd"
+            ],
+            [
+                "119834e9fb0043b2"
+            ]
+        ]
+    },
+    {
+        "id": "15e61ddbbf319eb6",
+        "type": "ui-group",
+        "name": "BUS02 · Sergio Vásquez",
+        "page": "ba64e10001326749",
+        "width": "3",
+        "height": "1",
+        "order": 2,
+        "showTitle": true,
+        "className": "",
+        "visible": "true",
+        "disabled": "false",
+        "groupType": "default"
+    },
+    {
+        "id": "639cb6e0d53d9ae2",
+        "type": "ui-gauge",
+        "z": "7d84ae0ad1b75b3b",
+        "name": "Frecuencia cardíaca",
+        "group": "15e61ddbbf319eb6",
+        "order": 1,
+        "value": "payload",
+        "valueType": "msg",
+        "width": 3,
+        "height": 3,
+        "gtype": "gauge-half",
+        "gstyle": "rounded",
+        "title": "Frecuencia cardíaca",
+        "alwaysShowTitle": false,
+        "floatingTitlePosition": "top-left",
+        "units": "lpm",
+        "icon": "",
+        "prefix": "",
+        "suffix": "",
+        "segments": [
+            {
+                "from": "30",
+                "color": "#EF4444"
+            },
+            {
+                "from": "60",
+                "color": "#22C55E"
+            },
+            {
+                "from": "100",
+                "color": "#FACC15"
+            }
+        ],
+        "min": 30,
+        "max": 150,
+        "sizeThickness": 16,
+        "sizeGap": 4,
+        "sizeKeyThickness": 8,
+        "styleRounded": true,
+        "styleGlow": false,
+        "className": "",
+        "x": 820,
+        "y": 240,
+        "wires": []
+    },
+    {
+        "id": "37d1983a959a5d32",
+        "type": "ui-gauge",
+        "z": "7d84ae0ad1b75b3b",
+        "name": "SpO₂",
+        "group": "15e61ddbbf319eb6",
+        "order": 2,
+        "value": "payload",
+        "valueType": "msg",
+        "width": 3,
+        "height": 3,
+        "gtype": "gauge-half",
+        "gstyle": "rounded",
+        "title": "SpO₂",
+        "alwaysShowTitle": false,
+        "floatingTitlePosition": "top-left",
+        "units": "%",
+        "icon": "",
+        "prefix": "",
+        "suffix": "",
+        "segments": [
+            {
+                "from": "60",
+                "color": "#EF4444"
+            },
+            {
+                "from": "80",
+                "color": "#FACC15"
+            },
+            {
+                "from": "90",
+                "color": "#22C55E"
+            }
+        ],
+        "min": 60,
+        "max": 100,
+        "sizeThickness": 16,
+        "sizeGap": 4,
+        "sizeKeyThickness": 8,
+        "styleRounded": true,
+        "styleGlow": false,
+        "className": "",
+        "x": 820,
+        "y": 280,
+        "wires": []
+    },
+    {
+        "id": "b54c3c11097a283b",
+        "type": "ui-text",
+        "z": "7d84ae0ad1b75b3b",
+        "group": "15e61ddbbf319eb6",
+        "order": 3,
+        "width": 0,
+        "height": 0,
+        "name": "Estado BUS02-COND02",
+        "label": "Estado",
+        "format": "{{msg.payload}}",
+        "layout": "row-spread",
+        "style": false,
+        "font": "Helvetica",
+        "fontSize": 16,
+        "color": "#111827",
+        "wrapText": false,
+        "className": "",
+        "value": "payload",
+        "valueType": "msg",
+        "x": 810,
+        "y": 320,
+        "wires": []
+    },
+    {
+        "id": "f77306c857e61aa2",
+        "type": "function",
+        "z": "7d84ae0ad1b75b3b",
+        "name": "Extraer datos BUS02",
+        "func": "return [\n    { payload: msg.frecuencia_cardiaca },\n    { payload: msg.spo2 },\n    { payload: msg.estado }\n];",
+        "outputs": 3,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 560,
+        "y": 280,
+        "wires": [
+            [
+                "639cb6e0d53d9ae2"
+            ],
+            [
+                "37d1983a959a5d32"
+            ],
+            [
+                "b54c3c11097a283b"
+            ]
+        ]
+    },
+    {
+        "id": "ec6f574ba71ca374",
+        "type": "ui-group",
+        "name": "BUS03 · Michel Burgos",
+        "page": "ba64e10001326749",
+        "width": "3",
+        "height": "1",
+        "order": 3,
+        "showTitle": true,
+        "className": "",
+        "visible": "true",
+        "disabled": "false",
+        "groupType": "default"
+    },
+    {
+        "id": "6b7aee2dd0dca6eb",
+        "type": "ui-gauge",
+        "z": "7d84ae0ad1b75b3b",
+        "name": "Frecuencia cardíaca",
+        "group": "ec6f574ba71ca374",
+        "order": 1,
+        "value": "payload",
+        "valueType": "msg",
+        "width": 3,
+        "height": 3,
+        "gtype": "gauge-half",
+        "gstyle": "rounded",
+        "title": "Frecuencia cardíaca",
+        "alwaysShowTitle": false,
+        "floatingTitlePosition": "top-left",
+        "units": "lpm",
+        "icon": "",
+        "prefix": "",
+        "suffix": "",
+        "segments": [
+            {
+                "from": "30",
+                "color": "#EF4444"
+            },
+            {
+                "from": "60",
+                "color": "#22C55E"
+            },
+            {
+                "from": "100",
+                "color": "#FACC15"
+            }
+        ],
+        "min": 30,
+        "max": 150,
+        "sizeThickness": 16,
+        "sizeGap": 4,
+        "sizeKeyThickness": 8,
+        "styleRounded": true,
+        "styleGlow": false,
+        "className": "",
+        "x": 820,
+        "y": 400,
+        "wires": []
+    },
+    {
+        "id": "0ae4497098b9efe3",
+        "type": "ui-gauge",
+        "z": "7d84ae0ad1b75b3b",
+        "name": "SpO₂",
+        "group": "ec6f574ba71ca374",
+        "order": 2,
+        "value": "payload",
+        "valueType": "msg",
+        "width": 3,
+        "height": 3,
+        "gtype": "gauge-half",
+        "gstyle": "rounded",
+        "title": "SpO₂",
+        "alwaysShowTitle": false,
+        "floatingTitlePosition": "top-left",
+        "units": "%",
+        "icon": "",
+        "prefix": "",
+        "suffix": "",
+        "segments": [
+            {
+                "from": "60",
+                "color": "#EF4444"
+            },
+            {
+                "from": "80",
+                "color": "#FACC15"
+            },
+            {
+                "from": "90",
+                "color": "#22C55E"
+            }
+        ],
+        "min": 60,
+        "max": 100,
+        "sizeThickness": 16,
+        "sizeGap": 4,
+        "sizeKeyThickness": 8,
+        "styleRounded": true,
+        "styleGlow": false,
+        "className": "",
+        "x": 820,
+        "y": 440,
+        "wires": []
+    },
+    {
+        "id": "36545177e3a6e7a8",
+        "type": "ui-text",
+        "z": "7d84ae0ad1b75b3b",
+        "group": "ec6f574ba71ca374",
+        "order": 3,
+        "width": 0,
+        "height": 0,
+        "name": "Estado BUS03-COND03",
+        "label": "Estado",
+        "format": "{{msg.payload}}",
+        "layout": "row-spread",
+        "style": false,
+        "font": "Helvetica",
+        "fontSize": 16,
+        "color": "#111827",
+        "wrapText": false,
+        "className": "",
+        "value": "payload",
+        "valueType": "msg",
+        "x": 810,
+        "y": 480,
+        "wires": []
+    },
+    {
+        "id": "8aded95c6de81a39",
+        "type": "function",
+        "z": "7d84ae0ad1b75b3b",
+        "name": "Extraer datos BUS03",
+        "func": "return [\n    { payload: msg.frecuencia_cardiaca },\n    { payload: msg.spo2 },\n    { payload: msg.estado }\n];",
+        "outputs": 3,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 560,
+        "y": 440,
+        "wires": [
+            [
+                "6b7aee2dd0dca6eb"
+            ],
+            [
+                "0ae4497098b9efe3"
+            ],
+            [
+                "36545177e3a6e7a8"
+            ]
+        ]
+    },
+    {
+        "id": "f65055646631fe37",
+        "type": "ui-group",
+        "name": "BUS04 · Jorge Medina",
+        "page": "ba64e10001326749",
+        "width": "3",
+        "height": "1",
+        "order": 4,
+        "showTitle": true,
+        "className": "",
+        "visible": "true",
+        "disabled": "false",
+        "groupType": "default"
+    },
+    {
+        "id": "b8b42d5ae08e5319",
+        "type": "ui-gauge",
+        "z": "7d84ae0ad1b75b3b",
+        "name": "Frecuencia cardíaca",
+        "group": "f65055646631fe37",
+        "order": 1,
+        "value": "payload",
+        "valueType": "msg",
+        "width": 3,
+        "height": 3,
+        "gtype": "gauge-half",
+        "gstyle": "rounded",
+        "title": "Frecuencia cardíaca",
+        "alwaysShowTitle": false,
+        "floatingTitlePosition": "top-left",
+        "units": "lpm",
+        "icon": "",
+        "prefix": "",
+        "suffix": "",
+        "segments": [
+            {
+                "from": "30",
+                "color": "#EF4444"
+            },
+            {
+                "from": "60",
+                "color": "#22C55E"
+            },
+            {
+                "from": "100",
+                "color": "#FACC15"
+            }
+        ],
+        "min": 30,
+        "max": 150,
+        "sizeThickness": 16,
+        "sizeGap": 4,
+        "sizeKeyThickness": 8,
+        "styleRounded": true,
+        "styleGlow": false,
+        "className": "",
+        "x": 820,
+        "y": 560,
+        "wires": []
+    },
+    {
+        "id": "d0bfb736b191cb38",
+        "type": "ui-gauge",
+        "z": "7d84ae0ad1b75b3b",
+        "name": "SpO₂",
+        "group": "f65055646631fe37",
+        "order": 2,
+        "value": "payload",
+        "valueType": "msg",
+        "width": 3,
+        "height": 3,
+        "gtype": "gauge-half",
+        "gstyle": "rounded",
+        "title": "SpO₂",
+        "alwaysShowTitle": false,
+        "floatingTitlePosition": "top-left",
+        "units": "%",
+        "icon": "",
+        "prefix": "",
+        "suffix": "",
+        "segments": [
+            {
+                "from": "60",
+                "color": "#EF4444"
+            },
+            {
+                "from": "80",
+                "color": "#FACC15"
+            },
+            {
+                "from": "90",
+                "color": "#22C55E"
+            }
+        ],
+        "min": 60,
+        "max": 100,
+        "sizeThickness": 16,
+        "sizeGap": 4,
+        "sizeKeyThickness": 8,
+        "styleRounded": true,
+        "styleGlow": false,
+        "className": "",
+        "x": 820,
+        "y": 600,
+        "wires": []
+    },
+    {
+        "id": "16ebbd725c7ea9e4",
+        "type": "ui-text",
+        "z": "7d84ae0ad1b75b3b",
+        "group": "f65055646631fe37",
+        "order": 3,
+        "width": 0,
+        "height": 0,
+        "name": "Estado BUS04-COND04",
+        "label": "Estado",
+        "format": "{{msg.payload}}",
+        "layout": "row-spread",
+        "style": false,
+        "font": "Helvetica",
+        "fontSize": 16,
+        "color": "#111827",
+        "wrapText": false,
+        "className": "",
+        "value": "payload",
+        "valueType": "msg",
+        "x": 810,
+        "y": 640,
+        "wires": []
+    },
+    {
+        "id": "a4b6b6ac3a1f0d87",
+        "type": "function",
+        "z": "7d84ae0ad1b75b3b",
+        "name": "Extraer datos BUS04",
+        "func": "return [\n    { payload: msg.frecuencia_cardiaca },\n    { payload: msg.spo2 },\n    { payload: msg.estado }\n];",
+        "outputs": 3,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 560,
+        "y": 600,
+        "wires": [
+            [
+                "b8b42d5ae08e5319"
+            ],
+            [
+                "d0bfb736b191cb38"
+            ],
+            [
+                "16ebbd725c7ea9e4"
+            ]
+        ]
+    },
+    {
+        "id": "355536832bae99b6",
+        "type": "switch",
+        "z": "7d84ae0ad1b75b3b",
+        "name": "Separar por conductor",
+        "property": "id_conductor",
+        "propertyType": "msg",
+        "rules": [
+            {
+                "t": "eq",
+                "v": "BUS01-COND01",
+                "vt": "str"
+            },
+            {
+                "t": "eq",
+                "v": "BUS02-COND02",
+                "vt": "str"
+            },
+            {
+                "t": "eq",
+                "v": "BUS03-COND03",
+                "vt": "str"
+            },
+            {
+                "t": "eq",
+                "v": "BUS04-COND04",
+                "vt": "str"
+            }
+        ],
+        "checkall": "false",
+        "repair": false,
+        "outputs": 4,
+        "x": 340,
+        "y": 320,
+        "wires": [
+            [
+                "bca1f11bf88306aa"
+            ],
+            [
+                "f77306c857e61aa2"
+            ],
+            [
+                "8aded95c6de81a39"
+            ],
+            [
+                "a4b6b6ac3a1f0d87"
+            ]
+        ]
+    },
+    {
+        "id": "d416f31bb83ceb55",
+        "type": "ui-group",
+        "name": "Frecuencia cardíaca (últimos 10 min)",
+        "page": "ba64e10001326749",
+        "width": "6",
+        "height": "1",
+        "order": 5,
+        "showTitle": true,
+        "className": "",
+        "visible": "true",
+        "disabled": "false",
+        "groupType": "default"
+    },
+    {
+        "id": "c1434f3ef62df83a",
+        "type": "ui-group",
+        "name": "SpO₂ (últimos 10 min)",
+        "page": "ba64e10001326749",
+        "width": "6",
+        "height": "1",
+        "order": 6,
+        "showTitle": true,
+        "className": "",
+        "visible": "true",
+        "disabled": "false",
+        "groupType": "default"
+    },
+    {
+        "id": "72d193bc172658e5",
+        "type": "ui-chart",
+        "z": "7d84ae0ad1b75b3b",
+        "group": "d416f31bb83ceb55",
+        "name": "Frecuencia cardíaca",
+        "label": "Frecuencia cardíaca",
+        "order": 1,
+        "chartType": "line",
+        "category": "topic",
+        "categoryType": "msg",
+        "xAxisLabel": "",
+        "xAxisProperty": "",
+        "xAxisPropertyType": "timestamp",
+        "xAxisType": "time",
+        "xAxisFormat": "",
+        "xAxisFormatType": "auto",
+        "xmin": "",
+        "xmax": "",
+        "yAxisLabel": "lpm",
+        "yAxisProperty": "payload",
+        "yAxisPropertyType": "msg",
+        "ymin": "30",
+        "ymax": "150",
+        "bins": 10,
+        "action": "append",
+        "stackSeries": false,
+        "pointShape": "false",
+        "pointRadius": 4,
+        "showLegend": true,
+        "removeOlder": 10,
+        "removeOlderUnit": "60",
+        "removeOlderPoints": "",
+        "interpolation": "linear",
+        "colors": [
+            "#2563EB",
+            "#EF4444",
+            "#F59E0B",
+            "#10B981",
+            "#8B5CF6",
+            "#EC4899",
+            "#0EA5E9",
+            "#64748B",
+            "#14B8A6"
+        ],
+        "textColor": [
+            "#666666"
+        ],
+        "textColorDefault": true,
+        "gridColor": [
+            "#e5e5e5"
+        ],
+        "gridColorDefault": true,
+        "width": 6,
+        "height": 8,
+        "className": "",
+        "x": 820,
+        "y": 740,
+        "wires": []
+    },
+    {
+        "id": "700104681f30175f",
+        "type": "ui-chart",
+        "z": "7d84ae0ad1b75b3b",
+        "group": "c1434f3ef62df83a",
+        "name": "SpO₂",
+        "label": "SpO₂",
+        "order": 1,
+        "chartType": "line",
+        "category": "topic",
+        "categoryType": "msg",
+        "xAxisLabel": "",
+        "xAxisProperty": "",
+        "xAxisPropertyType": "timestamp",
+        "xAxisType": "time",
+        "xAxisFormat": "",
+        "xAxisFormatType": "auto",
+        "xmin": "",
+        "xmax": "",
+        "yAxisLabel": "%",
+        "yAxisProperty": "payload",
+        "yAxisPropertyType": "msg",
+        "ymin": "60",
+        "ymax": "100",
+        "bins": 10,
+        "action": "append",
+        "stackSeries": false,
+        "pointShape": "false",
+        "pointRadius": 4,
+        "showLegend": true,
+        "removeOlder": 10,
+        "removeOlderUnit": "60",
+        "removeOlderPoints": "",
+        "interpolation": "linear",
+        "colors": [
+            "#2563EB",
+            "#EF4444",
+            "#F59E0B",
+            "#10B981",
+            "#8B5CF6",
+            "#EC4899",
+            "#0EA5E9",
+            "#64748B",
+            "#14B8A6"
+        ],
+        "textColor": [
+            "#666666"
+        ],
+        "textColorDefault": true,
+        "gridColor": [
+            "#e5e5e5"
+        ],
+        "gridColorDefault": true,
+        "width": 6,
+        "height": 8,
+        "className": "",
+        "x": 820,
+        "y": 800,
+        "wires": []
+    },
+    {
+        "id": "55cc59fcc011a85d",
+        "type": "function",
+        "z": "7d84ae0ad1b75b3b",
+        "name": "Serie FC",
+        "func": "msg.topic = msg.id_conductor;\nmsg.payload = msg.frecuencia_cardiaca;\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 560,
+        "y": 740,
+        "wires": [
+            [
+                "72d193bc172658e5"
+            ]
+        ]
+    },
+    {
+        "id": "d98b3ce2597af97e",
+        "type": "function",
+        "z": "7d84ae0ad1b75b3b",
+        "name": "Serie SpO₂",
+        "func": "msg.topic = msg.id_conductor;\nmsg.payload = msg.spo2;\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 560,
+        "y": 800,
+        "wires": [
+            [
+                "700104681f30175f"
+            ]
+        ]
     }
 ]

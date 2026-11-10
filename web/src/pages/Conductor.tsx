@@ -1,12 +1,13 @@
 import { useState } from "react";
 import { Link, Navigate, useNavigate, useParams } from "react-router";
-import { Area, AreaChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Line } from "react-chartjs-2";
 import { Activity, Clock, Heart, Move, Shield, Truck, User } from "lucide-react";
 import { useApi } from "../api/cliente";
 import type { Alerta, Series } from "../api/tipos";
 import { useFlota } from "../components/FlotaContext";
 import { Pagina, Topbar } from "../components/Layout";
-import { Aviso, Card, CardTitulo, Cargando, EstadoBadge, Vacio, ejeTick, estiloTooltip } from "../components/ui";
+import { Aviso, Card, CardTitulo, Cargando, EstadoBadge, Vacio } from "../components/ui";
+import { opcionesBase } from "../lib/graficas";
 import { SelectorVentana } from "../components/GraficaSeries";
 import { estiloNivel, nivelAlerta, nivelConductor, zonaFc, zonaSpo2 } from "../lib/estado";
 import { diaLocal, duracion, hace, hora, iniciales, num } from "../lib/formato";
@@ -108,25 +109,22 @@ export function Conductor() {
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
           <Card className="p-5">
             <CardTitulo titulo="Historial FC y SpO₂" subtitulo="Promedio por intervalo"
-              accion={<SelectorVentana valor={ventana} onChange={setVentana} opciones={[{ m: 15, etiqueta: "15 min" }, { m: 60, etiqueta: "1 h" }, { m: 720, etiqueta: "12 h" }]} />} />
+              accion={<SelectorVentana valor={ventana} onChange={setVentana} opciones={[{ m: 15, etiqueta: "15 min" }, { m: 60, etiqueta: "1 h" }, { m: 720, etiqueta: "12 h" }, { m: 1440, etiqueta: "24 h" }]} />} />
             {!series.datos ? <Cargando alto={220} /> : !datosSerie.length ? (
               <Vacio titulo="Sin lecturas en este periodo" />
             ) : (
-              <ResponsiveContainer width="100%" height={220}>
-                <AreaChart data={datosSerie}>
-                  <defs>
-                    <linearGradient id="fcGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#EF4444" stopOpacity={0.15} /><stop offset="95%" stopColor="#EF4444" stopOpacity={0} /></linearGradient>
-                    <linearGradient id="spo2Grad" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#2563EB" stopOpacity={0.15} /><stop offset="95%" stopColor="#2563EB" stopOpacity={0} /></linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                  <XAxis dataKey="t" tick={ejeTick} tickFormatter={(t) => hora(t, ventana <= 15)} minTickGap={24} />
-                  <YAxis tick={ejeTick} domain={[30, 130]} width={36} />
-                  <Tooltip contentStyle={estiloTooltip} labelFormatter={(t) => hora(t, true)} />
-                  <Legend wrapperStyle={{ fontSize: 11 }} />
-                  <Area dataKey="fc" name="FC (lpm)" stroke="#EF4444" fill="url(#fcGrad)" strokeWidth={2} dot={false} isAnimationActive={false} />
-                  <Area dataKey="spo2" name="SpO₂ (%)" stroke="#2563EB" fill="url(#spo2Grad)" strokeWidth={2} dot={false} isAnimationActive={false} />
-                </AreaChart>
-              </ResponsiveContainer>
+              <div className="h-[240px]">
+                <Line
+                  options={opcionesBase<"line">(30, 130)}
+                  data={{
+                    labels: datosSerie.map((d) => hora(d.t, ventana <= 15)),
+                    datasets: [
+                      { label: "FC (lpm)", data: datosSerie.map((d) => d.fc), borderColor: "#EF4444", backgroundColor: "rgba(239,68,68,0.12)", fill: true, borderWidth: 2, pointRadius: 0, tension: 0.3 },
+                      { label: "SpO₂ (%)", data: datosSerie.map((d) => d.spo2), borderColor: "#2563EB", backgroundColor: "rgba(37,99,235,0.12)", fill: true, borderWidth: 2, pointRadius: 0, tension: 0.3 },
+                    ],
+                  }}
+                />
+              </div>
             )}
           </Card>
 

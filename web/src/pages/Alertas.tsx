@@ -48,7 +48,7 @@ export function Alertas() {
   const revisar = async (a: Alerta) => {
     try {
       setErrorRevision(null);
-      await api(`/alertas/${encodeURIComponent(a._id)}/revisar`, { method: "PATCH", body: "{}" });
+      await api(`/alertas/${encodeURIComponent(a._id)}/revisar`, { method: "PUT", body: "{}" });
       recargar();
     } catch (e) {
       setErrorRevision(e instanceof Error ? e.message : "No se pudo marcar la alerta");

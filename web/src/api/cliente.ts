@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 const CLAVE_TOKEN = "driversafe.token";
+const API_URL = `${import.meta.env.VITE_API_URL ?? ""}/api/driversafe`;
 
 export const sesion = {
   token(): string | null {
@@ -40,7 +41,7 @@ export const onNoAutorizado = (fn: () => void) => {
 
 export async function api<T>(ruta: string, init: RequestInit = {}): Promise<T> {
   const token = sesion.token();
-  const res = await fetch(`/api${ruta}`, {
+  const res = await fetch(`${API_URL}${ruta}`, {
     ...init,
     headers: {
       "Content-Type": "application/json",
@@ -48,7 +49,7 @@ export async function api<T>(ruta: string, init: RequestInit = {}): Promise<T> {
       ...init.headers,
     },
   });
-  if (res.status === 401 && !ruta.startsWith("/auth")) alNoAutorizado?.();
+  if (res.status === 401 && ruta !== "/login") alNoAutorizado?.();
   const cuerpo = await res.json().catch(() => null);
   if (!res.ok) throw new ErrorApi(res.status, cuerpo?.error ?? `Error ${res.status}`);
   return cuerpo as T;

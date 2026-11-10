@@ -15,7 +15,7 @@ export function Login({ onLogin }: { onLogin: (usuario: string) => void }) {
     setCargando(true);
     setError(null);
     try {
-      const r = await api<{ token: string; usuario: string }>("/auth/login", { method: "POST", body: JSON.stringify({ usuario, clave }) });
+      const r = await api<{ token: string; usuario: string }>("/login", { method: "POST", body: JSON.stringify({ usuario, clave }) });
       sesion.guardar(r.token, recordar);
       onLogin(r.usuario);
     } catch (err) {

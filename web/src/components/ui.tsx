@@ -112,5 +112,3 @@ export function Boton({ children, onClick, variante = "borde", icono: Icon, disa
   );
 }
 
-export const estiloTooltip = { borderRadius: 12, border: "1px solid #e2e8f0", fontSize: 12 };
-export const ejeTick = { fontSize: 11, fill: "#64748B" };

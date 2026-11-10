@@ -1,11 +1,12 @@
 import { useMemo } from "react";
 import { Link } from "react-router";
-import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Bar } from "react-chartjs-2";
 import { AlertOctagon, Bell, CheckCircle, Clock, Download } from "lucide-react";
 import { useApi } from "../api/cliente";
 import type { Analitica } from "../api/tipos";
 import { Pagina, Topbar } from "../components/Layout";
-import { Aviso, Boton, Card, CardTitulo, Cargando, Vacio, ejeTick, estiloTooltip } from "../components/ui";
+import { Aviso, Boton, Card, CardTitulo, Cargando, Vacio } from "../components/ui";
+import { opcionesBase } from "../lib/graficas";
 import { fechaHora, hace, iniciales, nombreCorto, num } from "../lib/formato";
 import { descargarCsv } from "../lib/csv";
 
@@ -82,18 +83,19 @@ export function Historial() {
           {!datos ? <Cargando alto={220} /> : !porDia.length || sinActividad ? (
             <Vacio titulo="Sin lecturas en la ventana analizada" detalle="Si ya hay datos nuevos, vuelve a ejecutar el análisis en Node-RED." />
           ) : (
-            <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={porDia} barSize={20}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                <XAxis dataKey="etiqueta" tick={ejeTick} />
-                <YAxis tick={ejeTick} width={40} />
-                <Tooltip contentStyle={estiloTooltip} />
-                <Legend wrapperStyle={{ fontSize: 11 }} />
-                <Bar dataKey="normal" name="Normal" fill="#22C55E" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="prealerta" name="Prealerta" fill="#FACC15" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="critica" name="Crítico" fill="#EF4444" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
+            <div className="h-[240px]">
+              <Bar
+                options={opcionesBase<"bar">()}
+                data={{
+                  labels: porDia.map((d) => d.etiqueta),
+                  datasets: [
+                    { label: "Normal", data: porDia.map((d) => d.normal), backgroundColor: "#22C55E", borderRadius: 4, maxBarThickness: 20 },
+                    { label: "Prealerta", data: porDia.map((d) => d.prealerta), backgroundColor: "#FACC15", borderRadius: 4, maxBarThickness: 20 },
+                    { label: "Crítico", data: porDia.map((d) => d.critica), backgroundColor: "#EF4444", borderRadius: 4, maxBarThickness: 20 },
+                  ],
+                }}
+              />
+            </div>
           )}
         </Card>
 

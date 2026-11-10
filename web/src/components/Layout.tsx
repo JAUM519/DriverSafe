@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router";
-import { Activity, BarChart2, Bell, Clock, LayoutDashboard, LogOut, Menu, Search, Settings, Truck, Users, X } from "lucide-react";
+import { Activity, BarChart2, Bell, Clock, Gauge, LayoutDashboard, LogOut, Menu, Search, Settings, Truck, Users, X } from "lucide-react";
 import { useFlota } from "./FlotaContext";
 import { fechaLarga, iniciales } from "../lib/formato";
 
@@ -8,6 +8,7 @@ const navItems = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard, fin: true },
   { to: "/conductores", label: "Conductores", icon: Users },
   { to: "/alertas", label: "Alertas", icon: Bell },
+  { to: "/tiempo-real", label: "Tiempo real (Node-RED)", icon: Gauge },
   { to: "/historial", label: "Historial & Analítica", icon: BarChart2 },
   { to: "/configuracion", label: "Configuración", icon: Settings },
   { to: "/panel", label: "Panel Vehículo", icon: Truck },
